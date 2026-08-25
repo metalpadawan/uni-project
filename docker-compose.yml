@@ -1,0 +1,33 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: smart_attend
+      POSTGRES_USER: smart_attend
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-development-only}
+    ports: ["5432:5432"]
+    volumes:
+      - smart_attend_db:/var/lib/postgresql/data
+      - ./database/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+  api:
+    image: python:3.12-slim
+    working_dir: /app
+    command: sh -c "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes: ["./api:/app"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://smart_attend:${POSTGRES_PASSWORD:-local-development-only}@db:5432/smart_attend
+      QR_SIGNING_SECRET: ${QR_SIGNING_SECRET:-local-development-signing-secret-change-before-deploy}
+      JWT_SECRET: ${JWT_SECRET:-local-development-jwt-secret-change-before-deploy}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      FACE_SERVICE_URL: http://face-service:8001
+      ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+    ports: ["8000:8000"]
+    depends_on: [db, face-service]
+  face-service:
+    image: python:3.12-slim
+    working_dir: /app
+    command: sh -c "pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8001 --reload"
+    volumes: ["./face-service:/app"]
+    ports: ["8001:8001"]
+volumes:
+  smart_attend_db:

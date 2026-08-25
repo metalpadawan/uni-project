@@ -1,0 +1,13 @@
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TYPE user_role AS ENUM ('admin','lecturer','student');
+CREATE TYPE session_status AS ENUM ('open','closed');
+CREATE TYPE attendance_status AS ENUM ('present','flagged');
+CREATE TABLE users (id varchar(36) PRIMARY KEY, name text NOT NULL, email text UNIQUE NOT NULL, password_hash text NOT NULL, role user_role NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE students (id varchar(36) PRIMARY KEY, user_id varchar(36) UNIQUE NOT NULL REFERENCES users(id), matric_no text UNIQUE NOT NULL, department text NOT NULL, level int NOT NULL);
+CREATE TABLE face_embeddings (id varchar(36) PRIMARY KEY, student_id varchar(36) UNIQUE NOT NULL REFERENCES students(id), embedding vector(128) NOT NULL, enrolled_at timestamptz NOT NULL DEFAULT now(), sample_photo_url text);
+CREATE TABLE courses (id varchar(36) PRIMARY KEY, code text UNIQUE NOT NULL, title text NOT NULL, lecturer_id varchar(36) NOT NULL REFERENCES users(id));
+CREATE TABLE course_enrollments (id varchar(36) PRIMARY KEY, course_id varchar(36) NOT NULL REFERENCES courses(id), student_id varchar(36) NOT NULL REFERENCES students(id), UNIQUE(course_id,student_id));
+CREATE TABLE attendance_sessions (id varchar(36) PRIMARY KEY, course_id varchar(36) NOT NULL REFERENCES courses(id), lecturer_id varchar(36) NOT NULL REFERENCES users(id), started_at timestamptz NOT NULL, ends_at timestamptz NOT NULL, status session_status NOT NULL);
+CREATE TABLE qr_tokens (id varchar(36) PRIMARY KEY, session_id varchar(36) NOT NULL REFERENCES attendance_sessions(id), token_hash text UNIQUE NOT NULL, issued_at timestamptz NOT NULL, expires_at timestamptz NOT NULL);
+CREATE TABLE attendance_records (id varchar(36) PRIMARY KEY, session_id varchar(36) NOT NULL REFERENCES attendance_sessions(id), student_id varchar(36) NOT NULL REFERENCES students(id), face_match_score double precision NOT NULL, qr_token_id varchar(36) NOT NULL REFERENCES qr_tokens(id), marked_at timestamptz NOT NULL, status attendance_status NOT NULL, UNIQUE(session_id,student_id));
+CREATE TABLE attendance_attempts (id varchar(36) PRIMARY KEY, session_id varchar(36) NOT NULL REFERENCES attendance_sessions(id), student_id varchar(36) NOT NULL REFERENCES students(id), face_match_score double precision NOT NULL, qr_token_id varchar(36) NOT NULL REFERENCES qr_tokens(id), attempted_at timestamptz NOT NULL, status attendance_status NOT NULL);

@@ -1,0 +1,9 @@
+{
+  "name": "smart-attendance-system",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix frontend run dev -- --port 3000",
+    "build": "npm --prefix frontend run build",
+    "frontend": "npm --prefix frontend run dev -- --port 3000"
+  }
+}
