@@ -1,8 +1,8 @@
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 
-from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, String, UniqueConstraint
+from sqlalchemy import JSON, DateTime, Enum, Float, ForeignKey, Integer, String, Time, UniqueConstraint
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -41,6 +41,12 @@ class UserRole(str, enum.Enum):
     student = "student"
 
 
+class RegistrationStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
 class User(Base):
     __tablename__ = "users"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -67,6 +73,17 @@ class CourseEnrollment(Base):
     student_id: Mapped[str] = mapped_column(ForeignKey("students.id"))
 
 
+class ClassSchedule(Base):
+    """A recurring weekly class slot. day_of_week follows date.weekday(): 0=Monday .. 6=Sunday."""
+
+    __tablename__ = "class_schedules"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    course_id: Mapped[str] = mapped_column(ForeignKey("courses.id"), nullable=False)
+    day_of_week: Mapped[int] = mapped_column(Integer)
+    start_time: Mapped[time] = mapped_column(Time)
+    duration_minutes: Mapped[int] = mapped_column(Integer)
+
+
 class FaceEmbedding(Base):
     __tablename__ = "face_embeddings"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
@@ -83,6 +100,24 @@ class Student(Base):
     matric_no: Mapped[str] = mapped_column(String(40), unique=True)
     department: Mapped[str] = mapped_column(String(160))
     level: Mapped[int]
+
+
+class PendingStudent(Base):
+    __tablename__ = "pending_students"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    name: Mapped[str] = mapped_column(String(160))
+    email: Mapped[str] = mapped_column(String(255))
+    password_hash: Mapped[str] = mapped_column(String(255))
+    matric_no: Mapped[str] = mapped_column(String(40))
+    department: Mapped[str] = mapped_column(String(160))
+    level: Mapped[int]
+    face_embedding: Mapped[list[float]] = mapped_column(EmbeddingType())
+    biometric_consent: Mapped[bool]
+    status: Mapped[RegistrationStatus] = mapped_column(Enum(RegistrationStatus), default=RegistrationStatus.pending)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    rejection_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class AttendanceSession(Base):
@@ -102,6 +137,16 @@ class QRToken(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=uid)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class AttendanceRecord(Base):

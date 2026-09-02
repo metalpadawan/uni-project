@@ -30,14 +30,40 @@ export const api = {
       }),
     }),
   openSessions: () => request("/sessions/open"),
+  currentSession: () => request("/sessions/current"),
   rotateQr: (sessionId) =>
     request(`/sessions/${sessionId}/qr`, { method: "POST" }),
   closeSession: (sessionId) =>
     request(`/sessions/${sessionId}/close`, { method: "POST" }),
   sessionAttendance: (sessionId) =>
     request(`/sessions/${sessionId}/attendance`),
+  listCourses: () => request("/courses"),
+  listStudents: () => request("/students"),
+  myAttendance: () => request("/students/me/attendance"),
+  roster: () => request("/roster"),
+  adminOverview: () => request("/admin/overview"),
+  listSchedule: () => request("/schedule"),
+  addSchedule: (data) =>
+    request("/schedule", { method: "POST", body: JSON.stringify(data) }),
+  deleteSchedule: (scheduleId) =>
+    request(`/schedule/${scheduleId}`, { method: "DELETE" }),
   enrollStudent: (data) =>
     request("/students", { method: "POST", body: JSON.stringify(data) }),
+  register: (data) =>
+    request("/auth/register", { method: "POST", body: JSON.stringify(data) }),
+  registerStudent: (data) =>
+    request("/auth/register-student", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+  pendingStudents: () => request("/students/pending"),
+  approveStudent: (id) =>
+    request(`/students/pending/${id}/approve`, { method: "POST" }),
+  rejectStudent: (id, reason) =>
+    request(`/students/pending/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason || null }),
+    }),
   checkIn: (data) =>
     request("/attendance/checkin", {
       method: "POST",
@@ -63,7 +89,14 @@ export const api = {
     sessionStorage.setItem("smartattend_user", JSON.stringify(result.user));
     return result.user;
   },
-  logout: () => {
+  logout: async () => {
+    const refreshToken = sessionStorage.getItem("smartattend_refresh_token");
+    if (refreshToken) {
+      await request("/auth/logout", {
+        method: "POST",
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      }).catch(() => {});
+    }
     accessToken = "";
     [
       "smartattend_access_token",

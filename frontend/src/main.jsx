@@ -20,45 +20,13 @@ import {
   X,
   Menu,
   CircleUserRound,
+  UserPlus,
 } from "lucide-react";
 import "./styles.css";
 import { api } from "./api";
 const SecureCheckIn = React.lazy(() => import("./SecureCheckIn"));
-
-const students = [
-  {
-    name: "Ekemini John",
-    id: "21/CSC/142",
-    course: "CSC 421",
-    time: "09:02 AM",
-    status: "Present",
-    initials: "EJ",
-  },
-  {
-    name: "Jecintha Odok",
-    id: "21/CSC/156",
-    course: "CSC 421",
-    time: "09:04 AM",
-    status: "Present",
-    initials: "JO",
-  },
-  {
-    name: "Mfon Udo",
-    id: "21/CSC/178",
-    course: "CSC 421",
-    time: "09:08 AM",
-    status: "Present",
-    initials: "MU",
-  },
-  {
-    name: "Grace Effiong",
-    id: "21/CSC/183",
-    course: "CSC 421",
-    time: "—",
-    status: "Pending",
-    initials: "GE",
-  },
-];
+const EnrollStudent = React.lazy(() => import("./EnrollStudent"));
+const StudentRegister = React.lazy(() => import("./StudentRegister"));
 
 const titleRole = (role) =>
   role ? role[0].toUpperCase() + role.slice(1) : "Student";
@@ -71,7 +39,8 @@ const homeFor = (role) =>
 
 function LoginScreen({ onLogin, demoMode }) {
   const [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [mode, setMode] = useState("login");
   async function submit(e) {
     e.preventDefault();
     const data = new FormData(e.currentTarget);
@@ -124,61 +93,93 @@ function LoginScreen({ onLogin, demoMode }) {
         </div>
       </section>
       <section className="login-panel">
-        <form onSubmit={submit}>
-          <span className="login-lock">
-            <ShieldCheck />
-          </span>
-          <h2>Welcome back</h2>
-          <p>Sign in with your university account.</p>
-          <label htmlFor="login-email">Email address</label>
-          <input
-            id="login-email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            placeholder="name@unicross.edu.ng"
-            required
-          />
-          <label htmlFor="login-password">Password</label>
-          <input
-            id="login-password"
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            minLength="8"
-            placeholder="Enter your password"
-            required
-          />
-          {error && (
-            <div className="login-error" role="alert">
-              {error}
-            </div>
-          )}
-          <button className="primary full" disabled={busy}>
-            {busy ? "Signing in…" : "Sign in securely"}
-          </button>
-          {demoMode && (
-            <div className="demo-access">
-              <span>Local development access</span>
-              <div>
-                {["Student", "Lecturer", "Admin"].map((role) => (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    key={role}
-                    onClick={() => demo(role)}
-                  >
-                    {role}
-                  </button>
-                ))}
+        {mode === "register" ? (
+          <div>
+            <span className="login-lock">
+              <ShieldCheck />
+            </span>
+            <h2>Student registration</h2>
+            <p>
+              Submit your details and a face capture. An admin reviews every
+              request before your account can sign in.
+            </p>
+            <React.Suspense fallback={<p>Loading…</p>}>
+              <StudentRegister onDone={() => setMode("login")} />
+            </React.Suspense>
+            <button
+              type="button"
+              className="outline full"
+              style={{ marginTop: 14 }}
+              onClick={() => setMode("login")}
+            >
+              Back to sign in
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={submit}>
+            <span className="login-lock">
+              <ShieldCheck />
+            </span>
+            <h2>Welcome back</h2>
+            <p>Sign in with your university account.</p>
+            <label htmlFor="login-email">Email address</label>
+            <input
+              id="login-email"
+              name="email"
+              type="email"
+              autoComplete="email"
+              placeholder="name@unicross.edu.ng"
+              required
+            />
+            <label htmlFor="login-password">Password</label>
+            <input
+              id="login-password"
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              minLength="8"
+              placeholder="Enter your password"
+              required
+            />
+            {error && (
+              <div className="login-error" role="alert">
+                {error}
               </div>
-            </div>
-          )}
-          <small className="privacy-copy">
-            Biometric data is protected and used only for attendance
-            verification.
-          </small>
-        </form>
+            )}
+            <button className="primary full" disabled={busy}>
+              {busy ? "Signing in…" : "Sign in securely"}
+            </button>
+            <button
+              type="button"
+              className="outline full"
+              style={{ marginTop: 10 }}
+              onClick={() => setMode("register")}
+            >
+              New student? Register here
+            </button>
+            {demoMode && (
+              <div className="demo-access">
+                <span>Local development access</span>
+                <div>
+                  {["Student", "Lecturer", "Admin"].map((role) => (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      key={role}
+                      onClick={() => demo(role)}
+                    >
+                      {role}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <small className="privacy-copy">
+              Biometric data is protected and used only for attendance
+              verification.
+            </small>
+          </form>
+        )}
       </section>
     </main>
   );
@@ -219,9 +220,7 @@ function App() {
   const [openSessions, setOpenSessions] = useState([]);
   const [sessionsBusy, setSessionsBusy] = useState(false);
   const [records, setRecords] = useState(
-    () =>
-      JSON.parse(localStorage.getItem("attendanceRecords") || "null") ||
-      students,
+    () => JSON.parse(localStorage.getItem("attendanceRecords") || "null") || [],
   );
   const demoMode = import.meta.env.VITE_DEMO_MODE !== "false";
   useEffect(
@@ -248,6 +247,19 @@ function App() {
     };
   }, [user, role, page]);
   useEffect(() => {
+    if (!user || role !== "Lecturer" || page !== "Dashboard" || modal) return;
+    let active = true;
+    api
+      .currentSession()
+      .then((current) => {
+        if (active && current) setSession(current);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [user, role, page]);
+  useEffect(() => {
     if (modal !== "lecturer-session" || !session?.session_id) return;
     let active = true;
     const refresh = () =>
@@ -263,7 +275,7 @@ function App() {
       api
         .sessionAttendance(session.session_id)
         .then((rows) => {
-          if (active && rows.length)
+          if (active)
             setRecords(
               rows.map((row) => ({
                 ...row,
@@ -284,6 +296,7 @@ function App() {
         .catch(() => {});
     const qrTimer = window.setInterval(refresh, 20000);
     const attendanceTimer = window.setInterval(attendance, 3000);
+    refresh();
     attendance();
     return () => {
       active = false;
@@ -302,6 +315,7 @@ function App() {
     role === "Lecturer"
       ? [
           ["Dashboard", LayoutDashboard],
+          ["Schedule", BookOpen],
           ["Students", Users],
           ["Attendance", CalendarDays],
           ["Reports", FileBarChart],
@@ -315,6 +329,7 @@ function App() {
           ]
         : [
             ["Overview", LayoutDashboard],
+            ["Accounts", UserPlus],
             ["Students", Users],
             ["Courses", BookOpen],
             ["Reports", FileBarChart],
@@ -382,20 +397,6 @@ function App() {
         liveness_passed: liveness,
       });
       setDone(true);
-      setRecords((r) =>
-        r.map((x) =>
-          x.id === "21/CSC/156"
-            ? {
-                ...x,
-                status: "Present",
-                time: new Date().toLocaleTimeString([], {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }),
-              }
-            : x,
-        ),
-      );
     } catch (e) {
       setError(e.message);
     } finally {
@@ -520,7 +521,11 @@ function App() {
               <Bell size={19} />
               <i />
             </button>
-            <button className="mobile-avatar">
+            <button
+              className="mobile-avatar"
+              onClick={() => setMenu(true)}
+              aria-label="Open account menu"
+            >
               <CircleUserRound />
             </button>
           </div>
@@ -552,6 +557,17 @@ function App() {
                 {busy ? "Starting…" : "Start attendance"}
               </button>
             </section>
+            {session && modal !== "lecturer-session" && (
+              <section className="admin-callout" style={{ margin: "0 38px 22px" }}>
+                <div>
+                  <h3>{session.course_code} attendance is live</h3>
+                  <p>A scheduled or previously started session is open right now.</p>
+                </div>
+                <button className="primary" onClick={() => setModal("lecturer-session")}>
+                  <QrCode size={16} /> Show live QR
+                </button>
+              </section>
+            )}
             <section className="stats">
               <Stat
                 icon={<CalendarDays />}
@@ -699,11 +715,12 @@ function App() {
               </div>
             </section>
           </>
+        ) : page === "Schedule" ? (
+          <LecturerSchedule />
         ) : (
           <Workspace
             page={page}
             records={records}
-            setRecords={setRecords}
             onStart={() => setModal("checkin")}
           />
         )}
@@ -924,22 +941,7 @@ function PortalView({
           </div>
         </div>
         {page === "My attendance" ? (
-          <>
-            <div className="summary-row">
-              <b>
-                78%<small>Overall attendance</small>
-              </b>
-              <b>
-                12<small>Classes attended</small>
-              </b>
-              <b>
-                3<small>Classes missed</small>
-              </b>
-            </div>
-            <RecordTable
-              records={records.filter((r) => r.id === "21/CSC/156")}
-            />
-          </>
+          <StudentAttendanceHistory />
         ) : page === "Profile" ? (
           <div className="panel profile-card">
             <div className="avatar large">JO</div>
@@ -1019,105 +1021,709 @@ function PortalView({
         </div>
       </div>
       {page === "Overview" ? (
+        <AdminOverview setPage={setPage} />
+      ) : page === "Accounts" ? (
         <>
-          <div className="stats admin-stats">
-            <Stat
-              icon={<Users />}
-              label="Registered students"
-              value="112"
-              note="8 awaiting face enrolment"
-              tone="green"
-            />
-            <Stat
-              icon={<BookOpen />}
-              label="Active courses"
-              value="14"
-              note="Current semester"
-              tone="blue"
-            />
-            <Stat
-              icon={<ShieldCheck />}
-              label="Face enrolled"
-              value="104"
-              note="92.8% completed"
-              tone="purple"
-            />
-          </div>
-          <div className="panel admin-callout">
-            <div>
-              <h3>Biometric enrolment queue</h3>
-              <p>
-                Eight students still need 3–5 approved face samples before they
-                can check in.
-              </p>
-            </div>
-            <button className="primary" onClick={() => setPage("Students")}>
-              Review students
-            </button>
-          </div>
+          <PendingApprovals />
+          <CreateAccount />
+          <React.Suspense
+            fallback={
+              <div className="panel" style={{ padding: 24, marginTop: 20 }}>
+                Loading face enrolment…
+              </div>
+            }
+          >
+            <EnrollStudent />
+          </React.Suspense>
         </>
       ) : page === "Students" ? (
-        <RecordTable records={records} />
+        <AdminStudents />
       ) : page === "Courses" ? (
-        <div className="course-grid">
-          {[
-            ["CSC 421", "Artificial Intelligence", "48 students"],
-            ["CSC 323", "Computer Architecture", "64 students"],
-            ["CSC 311", "Data Structures", "58 students"],
-          ].map((c) => (
-            <div className="panel course-card" key={c[0]}>
-              <span>{c[0]}</span>
-              <h3>{c[1]}</h3>
-              <p>
-                <Users size={15} />
-                {c[2]}
-              </p>
-              <button>
-                Manage course <ArrowUpRight size={15} />
-              </button>
-            </div>
-          ))}
-        </div>
+        <AdminCourses />
       ) : (
-        <Workspace
-          page={page}
-          records={records}
-          setRecords={() => {}}
-          onStart={onStart}
-        />
+        <Workspace page={page} records={records} onStart={onStart} />
       )}
     </section>
   );
 }
-function Workspace({ page, records, setRecords, onStart }) {
-  const [showForm, setShowForm] = useState(false),
-    [notice, setNotice] = useState(""),
-    [prefs, setPrefs] = useState({ face: true, qr: true, alerts: true });
-  function addStudent(e) {
-    e.preventDefault();
-    const f = new FormData(e.currentTarget),
-      name = f.get("name").trim(),
-      id = f.get("id").trim();
-    if (!name || !id) return;
-    setRecords((r) => [
-      ...r,
-      {
-        name,
-        id,
-        course: "CSC 421",
-        time: "—",
-        status: "Pending",
-        initials: name
-          .split(" ")
-          .map((x) => x[0])
-          .join("")
-          .slice(0, 2)
-          .toUpperCase(),
-      },
-    ]);
-    setShowForm(false);
-    setNotice("Student added successfully.");
+function StudentAttendanceHistory() {
+  const [history, setHistory] = useState(null),
+    [error, setError] = useState("");
+
+  useEffect(() => {
+    api.myAttendance().then(setHistory).catch((e) => setError(e.message));
+  }, []);
+
+  if (error)
+    return (
+      <p className="inline-error" role="alert">
+        {error}
+      </p>
+    );
+  if (!history)
+    return <div className="panel empty-session">Loading your attendance…</div>;
+
+  const present = history.filter((r) => r.status === "present").length;
+  const missed = history.filter((r) => r.status !== "present").length;
+  const rate = history.length ? Math.round((present / history.length) * 100) : 0;
+
+  return (
+    <>
+      <div className="summary-row">
+        <b>
+          {rate}%<small>Overall attendance</small>
+        </b>
+        <b>
+          {present}
+          <small>Classes attended</small>
+        </b>
+        <b>
+          {missed}
+          <small>Classes missed</small>
+        </b>
+      </div>
+      {!history.length ? (
+        <div className="panel empty-session">
+          <ScanFace />
+          <h3>No attendance yet</h3>
+          <p>Check in to a class and it'll show up here.</p>
+        </div>
+      ) : (
+        <div className="records panel">
+          <table>
+            <thead>
+              <tr>
+                <th>Course</th>
+                <th>Time</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((r, i) => (
+                <tr key={i}>
+                  <td>
+                    <b>{r.course_code}</b> — {r.course_title}
+                  </td>
+                  <td>
+                    {new Date(r.time).toLocaleString([], {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </td>
+                  <td>
+                    <span className={"status " + (r.status === "present" ? "present" : "pending")}>
+                      {r.status === "present" ? <Check size={13} /> : <Clock3 size={13} />}{" "}
+                      {r.status === "present" ? "Present" : "Flagged"}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+function AdminOverview({ setPage }) {
+  const [overview, setOverview] = useState(null),
+    [error, setError] = useState("");
+
+  useEffect(() => {
+    api.adminOverview().then(setOverview).catch((e) => setError(e.message));
+  }, []);
+
+  if (error)
+    return (
+      <p className="inline-error" role="alert">
+        {error}
+      </p>
+    );
+  if (!overview) return <div className="panel empty-session">Loading overview…</div>;
+
+  return (
+    <>
+      <div className="stats admin-stats">
+        <Stat
+          icon={<Users />}
+          label="Registered students"
+          value={String(overview.registered_students)}
+          note="All approved accounts"
+          tone="green"
+        />
+        <Stat
+          icon={<BookOpen />}
+          label="Active courses"
+          value={String(overview.active_courses)}
+          note="Current semester"
+          tone="blue"
+        />
+        <Stat
+          icon={<ShieldCheck />}
+          label="Pending registrations"
+          value={String(overview.pending_registrations)}
+          note="Awaiting admin review"
+          tone="purple"
+        />
+      </div>
+      {overview.pending_registrations > 0 && (
+        <div className="panel admin-callout">
+          <div>
+            <h3>Registrations waiting for review</h3>
+            <p>
+              {overview.pending_registrations} student
+              {overview.pending_registrations === 1 ? "" : "s"} submitted a
+              registration that needs your approval or rejection.
+            </p>
+          </div>
+          <button className="primary" onClick={() => setPage("Accounts")}>
+            Review requests
+          </button>
+        </div>
+      )}
+    </>
+  );
+}
+function AdminStudents() {
+  const [students, setStudents] = useState([]),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState("");
+
+  useEffect(() => {
+    api
+      .listStudents()
+      .then(setStudents)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (error)
+    return (
+      <p className="inline-error" role="alert">
+        {error}
+      </p>
+    );
+  if (loading) return <div className="panel empty-session">Loading students…</div>;
+  if (!students.length)
+    return (
+      <div className="panel empty-session">
+        <Users />
+        <h3>No students yet</h3>
+        <p>Enrol a student or approve a pending registration to see them here.</p>
+      </div>
+    );
+
+  return (
+    <div className="records panel">
+      <table>
+        <thead>
+          <tr>
+            <th>Student</th>
+            <th>Matric number</th>
+            <th>Department</th>
+            <th>Level</th>
+          </tr>
+        </thead>
+        <tbody>
+          {students.map((s) => (
+            <tr key={s.id}>
+              <td>
+                <b>{s.name}</b>
+                <div style={{ fontSize: 11, color: "var(--muted)" }}>{s.email}</div>
+              </td>
+              <td>{s.matric_no}</td>
+              <td>{s.department}</td>
+              <td>{s.level}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+function AdminCourses() {
+  const [courses, setCourses] = useState([]),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState("");
+
+  useEffect(() => {
+    api
+      .listCourses()
+      .then(setCourses)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (error)
+    return (
+      <p className="inline-error" role="alert">
+        {error}
+      </p>
+    );
+  if (loading) return <div className="panel empty-session">Loading courses…</div>;
+  if (!courses.length)
+    return (
+      <div className="panel empty-session">
+        <BookOpen />
+        <h3>No courses yet</h3>
+        <p>Courses appear here once a lecturer starts a session or sets up a schedule.</p>
+      </div>
+    );
+
+  return (
+    <div className="course-grid">
+      {courses.map((c) => (
+        <div className="panel course-card" key={c.id}>
+          <span>{c.code}</span>
+          <h3>{c.title}</h3>
+        </div>
+      ))}
+    </div>
+  );
+}
+function PendingApprovals() {
+  const [pending, setPending] = useState([]),
+    [loading, setLoading] = useState(true),
+    [busyId, setBusyId] = useState(null),
+    [error, setError] = useState("");
+
+  function refresh() {
+    setLoading(true);
+    return api
+      .pendingStudents()
+      .then(setPending)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
   }
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  async function approve(id) {
+    setBusyId(id);
+    setError("");
+    try {
+      await api.approveStudent(id);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function reject(id) {
+    setBusyId(id);
+    setError("");
+    try {
+      await api.rejectStudent(id);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (loading)
+    return (
+      <div className="panel" style={{ padding: 24 }}>
+        Loading pending registrations…
+      </div>
+    );
+  if (!pending.length) return null;
+
+  return (
+    <div className="panel" style={{ padding: 24 }}>
+      <h3>Pending student registrations</h3>
+      <p style={{ color: "var(--muted)", fontSize: 12, margin: "6px 0 18px" }}>
+        Students who registered themselves. Review and approve or reject each
+        request.
+      </p>
+      {error && (
+        <p className="inline-error" role="alert">
+          {error}
+        </p>
+      )}
+      <div className="records panel" style={{ boxShadow: "none" }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Student</th>
+              <th>Matric number</th>
+              <th>Department</th>
+              <th>Level</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {pending.map((request) => (
+              <tr key={request.id}>
+                <td>
+                  <b>{request.name}</b>
+                  <div style={{ fontSize: 11, color: "var(--muted)" }}>
+                    {request.email}
+                  </div>
+                </td>
+                <td>{request.matric_no}</td>
+                <td>{request.department}</td>
+                <td>{request.level}</td>
+                <td style={{ display: "flex", gap: 8 }}>
+                  <button
+                    className="primary"
+                    disabled={busyId === request.id}
+                    onClick={() => approve(request.id)}
+                  >
+                    Approve
+                  </button>
+                  <button
+                    className="remove"
+                    disabled={busyId === request.id}
+                    onClick={() => reject(request.id)}
+                  >
+                    Reject
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+function CreateAccount() {
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState(""),
+    [success, setSuccess] = useState(null);
+  async function submit(e) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const f = new FormData(form);
+    setBusy(true);
+    setError("");
+    setSuccess(null);
+    try {
+      const created = await api.register({
+        name: f.get("name").trim(),
+        email: f.get("email").trim(),
+        password: f.get("password"),
+        role: f.get("role"),
+      });
+      setSuccess(created);
+      form.reset();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="panel" style={{ padding: 24 }}>
+      <h3>Create a lecturer or admin account</h3>
+      <p style={{ color: "var(--muted)", fontSize: 12, margin: "6px 0 18px" }}>
+        This creates a private sign-in the account owner can use on the login
+        screen right away. Share the temporary password with them through a
+        secure channel.
+      </p>
+      <form className="student-form" onSubmit={submit}>
+        <label>
+          Full name
+          <input name="name" placeholder="Dr. Jane Doe" minLength={2} required />
+        </label>
+        <label>
+          Email address
+          <input
+            name="email"
+            type="email"
+            placeholder="name@unicross.edu.ng"
+            required
+          />
+        </label>
+        <label>
+          Temporary password
+          <input
+            name="password"
+            type="text"
+            placeholder="At least 8 characters"
+            minLength={8}
+            required
+          />
+        </label>
+        <label>
+          Role
+          <select name="role" defaultValue="lecturer">
+            <option value="lecturer">Lecturer</option>
+            <option value="admin">Admin</option>
+          </select>
+        </label>
+        <button className="primary" disabled={busy}>
+          {busy ? "Creating…" : "Create account"}
+        </button>
+      </form>
+      {error && (
+        <p className="inline-error" role="alert">
+          {error}
+        </p>
+      )}
+      {success && (
+        <p className="notice" role="status">
+          <Check size={15} />
+          {success.name} can now sign in as {success.email}.
+        </p>
+      )}
+      <small style={{ display: "block", color: "var(--muted)", marginTop: 14 }}>
+        Student accounts need biometric enrolment and aren’t created from this
+        form yet.
+      </small>
+    </div>
+  );
+}
+const DAY_NAMES = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+function LecturerSchedule() {
+  const [schedule, setSchedule] = useState([]),
+    [loading, setLoading] = useState(true),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+
+  function refresh() {
+    setLoading(true);
+    return api
+      .listSchedule()
+      .then(setSchedule)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  async function submit(e) {
+    e.preventDefault();
+    const f = new FormData(e.currentTarget);
+    setBusy(true);
+    setError("");
+    try {
+      await api.addSchedule({
+        course_code: f.get("course_code").trim(),
+        course_title: f.get("course_title").trim(),
+        day_of_week: Number(f.get("day_of_week")),
+        start_time: f.get("start_time"),
+        duration_minutes: Number(f.get("duration_minutes")),
+      });
+      e.currentTarget.reset();
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id) {
+    setBusy(true);
+    setError("");
+    try {
+      await api.deleteSchedule(id);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="workspace">
+      <PageHead
+        title="Weekly class schedule"
+        text="Attendance opens and closes on its own at these times — no need to click Start."
+      />
+      <form className="student-form" onSubmit={submit}>
+        <label>
+          Course code
+          <input name="course_code" placeholder="CSC 421" required />
+        </label>
+        <label>
+          Course title
+          <input name="course_title" placeholder="Artificial Intelligence" required />
+        </label>
+        <label>
+          Day
+          <select name="day_of_week" defaultValue="0">
+            {DAY_NAMES.map((day, index) => (
+              <option key={day} value={index}>
+                {day}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Start time
+          <input name="start_time" type="time" defaultValue="09:00" required />
+        </label>
+        <label>
+          Duration (minutes)
+          <input
+            name="duration_minutes"
+            type="number"
+            defaultValue={120}
+            min={5}
+            max={360}
+            required
+          />
+        </label>
+        <button className="primary" disabled={busy}>
+          {busy ? "Saving…" : "Add to schedule"}
+        </button>
+      </form>
+      {error && (
+        <p className="inline-error" role="alert">
+          {error}
+        </p>
+      )}
+      {loading ? (
+        <div className="panel empty-session">Loading schedule…</div>
+      ) : schedule.length ? (
+        <div className="records panel">
+          <table>
+            <thead>
+              <tr>
+                <th>Course</th>
+                <th>Day</th>
+                <th>Start time</th>
+                <th>Duration</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {schedule.map((entry) => (
+                <tr key={entry.id}>
+                  <td>
+                    <b>{entry.course_code}</b> — {entry.course_title}
+                  </td>
+                  <td>{DAY_NAMES[entry.day_of_week]}</td>
+                  <td>{entry.start_time}</td>
+                  <td>{entry.duration_minutes} min</td>
+                  <td>
+                    <button
+                      className="remove"
+                      disabled={busy}
+                      onClick={() => remove(entry.id)}
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <div className="panel empty-session">
+          <BookOpen />
+          <h3>No scheduled classes yet</h3>
+          <p>Add a course above and it'll open attendance automatically every week.</p>
+        </div>
+      )}
+    </section>
+  );
+}
+function LecturerRoster() {
+  const [roster, setRoster] = useState([]),
+    [loading, setLoading] = useState(true),
+    [error, setError] = useState("");
+
+  useEffect(() => {
+    api
+      .roster()
+      .then(setRoster)
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (error)
+    return (
+      <p className="inline-error" role="alert">
+        {error}
+      </p>
+    );
+  if (loading)
+    return (
+      <section className="workspace">
+        <div className="panel empty-session">Loading your students…</div>
+      </section>
+    );
+
+  return (
+    <section className="workspace">
+      <PageHead
+        title="Enrolled students"
+        text="Students enrolled in the courses you teach."
+      />
+      {!roster.length ? (
+        <div className="panel empty-session">
+          <Users />
+          <h3>No enrolled students yet</h3>
+          <p>Students will appear here once they're enrolled in one of your courses.</p>
+        </div>
+      ) : (
+        roster.map((course) => (
+          <div className="records panel" style={{ marginBottom: 16 }} key={course.course_code}>
+            <div className="panel-head" style={{ padding: "16px 20px 0" }}>
+              <div>
+                <h3>{course.course_code}</h3>
+                <p>{course.course_title}</p>
+              </div>
+            </div>
+            {course.students.length ? (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Student</th>
+                    <th>Matric number</th>
+                    <th>Department</th>
+                    <th>Level</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {course.students.map((s) => (
+                    <tr key={s.matric_no}>
+                      <td>{s.name}</td>
+                      <td>{s.matric_no}</td>
+                      <td>{s.department}</td>
+                      <td>{s.level}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p style={{ padding: "0 20px 16px", color: "var(--muted)", fontSize: 12 }}>
+                No students enrolled in this course yet.
+              </p>
+            )}
+          </div>
+        ))
+      )}
+    </section>
+  );
+}
+function Workspace({ page, records, onStart }) {
+  const [notice, setNotice] = useState(""),
+    [prefs, setPrefs] = useState({ face: true, qr: true, alerts: true });
   function exportCsv() {
     const csv = [
       "Student,Matric Number,Course,Time,Status",
@@ -1132,45 +1738,7 @@ function Workspace({ page, records, setRecords, onStart }) {
     URL.revokeObjectURL(a.href);
     setNotice("Attendance report downloaded.");
   }
-  if (page === "Students")
-    return (
-      <section className="workspace">
-        <PageHead
-          title="Student records"
-          text="Register and manage students eligible for dual authentication"
-        >
-          <button className="primary" onClick={() => setShowForm((v) => !v)}>
-            <Users size={17} />
-            {showForm ? "Cancel" : "Add student"}
-          </button>
-        </PageHead>
-        {notice && <Notice text={notice} />}{" "}
-        {showForm && (
-          <form className="student-form" onSubmit={addStudent}>
-            <label>
-              Full name
-              <input name="name" placeholder="Student full name" required />
-            </label>
-            <label>
-              Matric number
-              <input name="id" placeholder="21/CSC/000" required />
-            </label>
-            <button className="primary">Save student</button>
-          </form>
-        )}
-        <RecordTable
-          records={records}
-          action={(r) => (
-            <button
-              className="remove"
-              onClick={() => setRecords((x) => x.filter((s) => s.id !== r.id))}
-            >
-              Remove
-            </button>
-          )}
-        />
-      </section>
-    );
+  if (page === "Students") return <LecturerRoster />;
   if (page === "Attendance")
     return (
       <section className="workspace">
@@ -1221,8 +1789,12 @@ function Workspace({ page, records, setRecords, onStart }) {
           />
           <Report
             title="Authentication integrity"
-            value="100%"
-            text="All recorded entries completed both face and QR verification."
+            value={`${Math.round((records.filter((r) => r.status === "Present").length / (records.filter((r) => r.status === "Present" || r.status === "Flagged").length || 1)) * 100)}%`}
+            text={
+              records.some((r) => r.status === "Flagged")
+                ? `${records.filter((r) => r.status === "Flagged").length} attempt(s) failed a face or QR check and were flagged for review.`
+                : "All recorded entries completed both face and QR verification."
+            }
           />
         </div>
       </section>

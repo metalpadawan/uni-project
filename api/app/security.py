@@ -1,14 +1,20 @@
 import hashlib
 import hmac
-import os
 import secrets
 from datetime import datetime, timezone
 
-QR_SIGNING_SECRET = os.getenv("QR_SIGNING_SECRET", "development-only-change-me")
+from .config import settings
+
+QR_SIGNING_SECRET = settings.qr_signing_secret
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def as_aware(value: datetime) -> datetime:
+    """SQLite drops tzinfo on read even for timezone-aware columns; PostgreSQL does not."""
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
 def new_qr_token(session_id: str, expires_at: datetime) -> str:

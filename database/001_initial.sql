@@ -2,6 +2,7 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TYPE user_role AS ENUM ('admin','lecturer','student');
 CREATE TYPE session_status AS ENUM ('open','closed');
 CREATE TYPE attendance_status AS ENUM ('present','flagged');
+CREATE TYPE registration_status AS ENUM ('pending','approved','rejected');
 CREATE TABLE users (id varchar(36) PRIMARY KEY, name text NOT NULL, email text UNIQUE NOT NULL, password_hash text NOT NULL, role user_role NOT NULL, created_at timestamptz NOT NULL DEFAULT now());
 CREATE TABLE students (id varchar(36) PRIMARY KEY, user_id varchar(36) UNIQUE NOT NULL REFERENCES users(id), matric_no text UNIQUE NOT NULL, department text NOT NULL, level int NOT NULL);
 CREATE TABLE face_embeddings (id varchar(36) PRIMARY KEY, student_id varchar(36) UNIQUE NOT NULL REFERENCES students(id), embedding vector(128) NOT NULL, enrolled_at timestamptz NOT NULL DEFAULT now(), sample_photo_url text);
@@ -11,3 +12,6 @@ CREATE TABLE attendance_sessions (id varchar(36) PRIMARY KEY, course_id varchar(
 CREATE TABLE qr_tokens (id varchar(36) PRIMARY KEY, session_id varchar(36) NOT NULL REFERENCES attendance_sessions(id), token_hash text UNIQUE NOT NULL, issued_at timestamptz NOT NULL, expires_at timestamptz NOT NULL);
 CREATE TABLE attendance_records (id varchar(36) PRIMARY KEY, session_id varchar(36) NOT NULL REFERENCES attendance_sessions(id), student_id varchar(36) NOT NULL REFERENCES students(id), face_match_score double precision NOT NULL, qr_token_id varchar(36) NOT NULL REFERENCES qr_tokens(id), marked_at timestamptz NOT NULL, status attendance_status NOT NULL, UNIQUE(session_id,student_id));
 CREATE TABLE attendance_attempts (id varchar(36) PRIMARY KEY, session_id varchar(36) NOT NULL REFERENCES attendance_sessions(id), student_id varchar(36) NOT NULL REFERENCES students(id), face_match_score double precision NOT NULL, qr_token_id varchar(36) NOT NULL REFERENCES qr_tokens(id), attempted_at timestamptz NOT NULL, status attendance_status NOT NULL);
+CREATE TABLE refresh_tokens (id varchar(36) PRIMARY KEY, user_id varchar(36) NOT NULL REFERENCES users(id), token_hash text UNIQUE NOT NULL, issued_at timestamptz NOT NULL, expires_at timestamptz NOT NULL, revoked_at timestamptz);
+CREATE TABLE class_schedules (id varchar(36) PRIMARY KEY, course_id varchar(36) NOT NULL REFERENCES courses(id), day_of_week int NOT NULL, start_time time NOT NULL, duration_minutes int NOT NULL);
+CREATE TABLE pending_students (id varchar(36) PRIMARY KEY, name text NOT NULL, email text NOT NULL, password_hash text NOT NULL, matric_no text NOT NULL, department text NOT NULL, level int NOT NULL, face_embedding vector(128) NOT NULL, biometric_consent boolean NOT NULL, status registration_status NOT NULL DEFAULT 'pending', requested_at timestamptz NOT NULL, reviewed_at timestamptz, reviewed_by varchar(36) REFERENCES users(id), rejection_reason text);

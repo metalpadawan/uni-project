@@ -9,16 +9,17 @@ import qrcode
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import Base, engine, get_db
-from .auth import hash_password, require_roles, token_pair, user_from_refresh, verify_password
-from .models import AttendanceAttempt, AttendanceRecord, AttendanceSession, AttendanceStatus, Course, CourseEnrollment, FaceEmbedding, QRToken, SessionStatus, Student, User, UserRole
-from .schemas import CheckIn, CheckInOut, LoginRequest, QRTokenOut, RefreshRequest, RegisterRequest, SessionCreate, SessionOut, StudentEnroll
-from .security import new_qr_token, signature_is_valid, token_hash, utcnow
+from .auth import hash_password, redeem_refresh_token, require_roles, revoke_refresh_token, token_pair, verify_password
+from .models import AttendanceAttempt, AttendanceRecord, AttendanceSession, AttendanceStatus, ClassSchedule, Course, CourseEnrollment, FaceEmbedding, PendingStudent, QRToken, RegistrationStatus, SessionStatus, Student, User, UserRole
+from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseOut, LoginRequest, PendingStudentOut, QRTokenOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
+from .scheduling import sync_scheduled_sessions
+from .security import as_aware, new_qr_token, signature_is_valid, token_hash, utcnow
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="SmartAttend API", version="0.1.0")
@@ -39,20 +40,26 @@ def bootstrap_admin(payload: RegisterRequest, db: Session = Depends(get_db)):
         raise HTTPException(409, "Bootstrap is disabled after the first account is created.")
     user = User(name=payload.name, email=payload.email.lower(), password_hash=hash_password(payload.password), role=UserRole.admin, created_at=utcnow())
     db.add(user); db.commit()
-    return token_pair(user)
+    return token_pair(user, db)
 
 
 @app.post("/auth/login")
-def login(payload: LoginRequest, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == payload.email.lower()))
     if not user or not verify_password(payload.password, user.password_hash):
         raise HTTPException(401, "Email or password is incorrect.")
-    return token_pair(user)
+    return token_pair(user, db)
 
 
 @app.post("/auth/refresh")
 def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
-    return token_pair(user_from_refresh(payload.refresh_token, db))
+    return token_pair(redeem_refresh_token(payload.refresh_token, db), db)
+
+
+@app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(payload: RefreshRequest, db: Session = Depends(get_db)):
+    revoke_refresh_token(payload.refresh_token, db)
 
 
 @app.post("/auth/register", status_code=status.HTTP_201_CREATED)
@@ -67,7 +74,8 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db), _: User = 
 
 
 @app.post("/auth/demo/{role}")
-def demo_login(role: UserRole, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def demo_login(request: Request, role: UserRole, db: Session = Depends(get_db)):
     if not settings.demo_mode:
         raise HTTPException(404, "Demo login is disabled.")
     email = f"{role.value}@smartattend.local"
@@ -82,35 +90,242 @@ def demo_login(role: UserRole, db: Session = Depends(get_db)):
             for course in db.scalars(select(Course)).all():
                 db.add(CourseEnrollment(course_id=course.id, student_id=student.id))
         db.commit()
-    return token_pair(user)
+    return token_pair(user, db)
+
+
+def create_student_account(db: Session, *, name: str, email: str, password_hash: str, matric_no: str, department: str, level: int, face_embedding: list[float]) -> Student:
+    if db.scalar(select(Student).where(Student.matric_no == matric_no)):
+        raise HTTPException(409, "A student with this matric number already exists.")
+    if db.scalar(select(User).where(User.email == email)):
+        raise HTTPException(409, "An account with this email already exists.")
+    user = User(name=name, email=email, password_hash=password_hash, role=UserRole.student, created_at=utcnow())
+    db.add(user); db.flush()
+    student = Student(user_id=user.id, matric_no=matric_no, department=department, level=level)
+    db.add(student); db.flush()
+    db.add(FaceEmbedding(student_id=student.id, embedding=face_embedding, enrolled_at=utcnow()))
+    return student
 
 
 @app.post("/students", status_code=status.HTTP_201_CREATED)
 def enroll_student(payload: StudentEnroll, db: Session = Depends(get_db), _: User = Depends(require_roles(UserRole.admin))):
     if not payload.biometric_consent:
         raise HTTPException(422, "Explicit biometric consent is required before face enrolment.")
-    if db.scalar(select(Student).where(Student.matric_no == payload.matric_no)):
-        raise HTTPException(409, "A student with this matric number already exists.")
-    if db.scalar(select(User).where(User.email == payload.email.lower())):
-        raise HTTPException(409, "An account with this email already exists.")
-    user = User(name=payload.name, email=payload.email.lower(), password_hash=hash_password(payload.temporary_password), role=UserRole.student, created_at=utcnow())
-    db.add(user); db.flush()
-    student = Student(user_id=user.id, matric_no=payload.matric_no, department=payload.department, level=payload.level)
-    db.add(student); db.flush()
-    db.add(FaceEmbedding(student_id=student.id, embedding=payload.face_embedding, enrolled_at=utcnow()))
+    student = create_student_account(
+        db,
+        name=payload.name,
+        email=payload.email.lower(),
+        password_hash=hash_password(payload.temporary_password),
+        matric_no=payload.matric_no,
+        department=payload.department,
+        level=payload.level,
+        face_embedding=payload.face_embedding,
+    )
     db.commit()
-    return {"id": student.id, "name": user.name, "matric_no": student.matric_no, "face_enrolled": True}
+    return {"id": student.id, "name": payload.name, "matric_no": student.matric_no, "face_enrolled": True}
 
 
-@app.post("/sessions", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
-def create_session(payload: SessionCreate, db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
-    course = db.scalar(select(Course).where(Course.code == payload.course_code))
+@app.post("/auth/register-student", status_code=status.HTTP_201_CREATED)
+@limiter.limit("5/minute")
+def register_student(request: Request, payload: StudentRegisterRequest, db: Session = Depends(get_db)):
+    if not payload.biometric_consent:
+        raise HTTPException(422, "Explicit biometric consent is required before face enrolment.")
+    email = payload.email.lower()
+    if db.scalar(select(User).where(User.email == email)):
+        raise HTTPException(409, "An account with this email already exists.")
+    if db.scalar(select(PendingStudent).where(PendingStudent.email == email, PendingStudent.status == RegistrationStatus.pending)):
+        raise HTTPException(409, "A registration request for this email is already pending review.")
+    request_row = PendingStudent(
+        name=payload.name,
+        email=email,
+        password_hash=hash_password(payload.password),
+        matric_no=payload.matric_no,
+        department=payload.department,
+        level=payload.level,
+        face_embedding=payload.face_embedding,
+        biometric_consent=payload.biometric_consent,
+        status=RegistrationStatus.pending,
+        requested_at=utcnow(),
+    )
+    db.add(request_row)
+    db.commit()
+    return {"status": "pending", "message": "Your registration has been submitted. An admin will review it before you can sign in."}
+
+
+@app.get("/students/pending", response_model=list[PendingStudentOut])
+def list_pending_students(db: Session = Depends(get_db), _: User = Depends(require_roles(UserRole.admin))):
+    rows = db.scalars(select(PendingStudent).where(PendingStudent.status == RegistrationStatus.pending).order_by(PendingStudent.requested_at)).all()
+    return [PendingStudentOut(id=r.id, name=r.name, email=r.email, matric_no=r.matric_no, department=r.department, level=r.level, status=r.status.value, requested_at=r.requested_at) for r in rows]
+
+
+@app.post("/students/pending/{request_id}/approve", status_code=status.HTTP_201_CREATED)
+def approve_pending_student(request_id: str, db: Session = Depends(get_db), admin: User = Depends(require_roles(UserRole.admin))):
+    pending = db.get(PendingStudent, request_id)
+    if not pending or pending.status != RegistrationStatus.pending:
+        raise HTTPException(404, "Pending registration was not found.")
+    student = create_student_account(
+        db,
+        name=pending.name,
+        email=pending.email,
+        password_hash=pending.password_hash,
+        matric_no=pending.matric_no,
+        department=pending.department,
+        level=pending.level,
+        face_embedding=pending.face_embedding,
+    )
+    pending.status = RegistrationStatus.approved
+    pending.reviewed_at = utcnow()
+    pending.reviewed_by = admin.id
+    db.commit()
+    return {"id": student.id, "name": pending.name, "matric_no": student.matric_no, "face_enrolled": True}
+
+
+@app.post("/students/pending/{request_id}/reject")
+def reject_pending_student(request_id: str, payload: RejectRequest, db: Session = Depends(get_db), admin: User = Depends(require_roles(UserRole.admin))):
+    pending = db.get(PendingStudent, request_id)
+    if not pending or pending.status != RegistrationStatus.pending:
+        raise HTTPException(404, "Pending registration was not found.")
+    pending.status = RegistrationStatus.rejected
+    pending.reviewed_at = utcnow()
+    pending.reviewed_by = admin.id
+    pending.rejection_reason = payload.reason
+    db.commit()
+    return {"id": pending.id, "status": pending.status.value}
+
+
+@app.get("/students", response_model=list[StudentRosterOut])
+def list_students(db: Session = Depends(get_db), _: User = Depends(require_roles(UserRole.admin))):
+    rows = db.execute(select(Student, User).join(User, Student.user_id == User.id).order_by(User.name)).all()
+    return [StudentRosterOut(id=student.id, name=user.name, email=user.email, matric_no=student.matric_no, department=student.department, level=student.level) for student, user in rows]
+
+
+@app.get("/students/me/attendance", response_model=list[AttendanceHistoryOut])
+def my_attendance(db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.student))):
+    student = db.scalar(select(Student).where(Student.user_id == user.id))
+    if not student:
+        raise HTTPException(404, "Student profile was not found.")
+    records = db.execute(
+        select(AttendanceRecord, AttendanceSession, Course)
+        .join(AttendanceSession, AttendanceRecord.session_id == AttendanceSession.id)
+        .join(Course, AttendanceSession.course_id == Course.id)
+        .where(AttendanceRecord.student_id == student.id)
+    ).all()
+    attempts = db.execute(
+        select(AttendanceAttempt, AttendanceSession, Course)
+        .join(AttendanceSession, AttendanceAttempt.session_id == AttendanceSession.id)
+        .join(Course, AttendanceSession.course_id == Course.id)
+        .where(AttendanceAttempt.student_id == student.id)
+    ).all()
+    rows = [
+        AttendanceHistoryOut(course_code=course.code, course_title=course.title, status=record.status.value, time=record.marked_at, face_match_score=record.face_match_score)
+        for record, session, course in records
+    ]
+    rows.extend(
+        AttendanceHistoryOut(course_code=course.code, course_title=course.title, status=attempt.status.value, time=attempt.attempted_at, face_match_score=attempt.face_match_score)
+        for attempt, session, course in attempts
+    )
+    return sorted(rows, key=lambda row: row.time, reverse=True)
+
+
+def get_or_create_course(db: Session, code: str, title: str, lecturer: User) -> Course:
+    course = db.scalar(select(Course).where(Course.code == code))
     if not course:
-        course = Course(code=payload.course_code, title=payload.course_title, lecturer_id=lecturer.id)
+        course = Course(code=code, title=title, lecturer_id=lecturer.id)
         db.add(course)
         db.flush()
     elif course.lecturer_id != lecturer.id:
         raise HTTPException(403, "This course is assigned to another lecturer.")
+    return course
+
+
+@app.get("/admin/overview", response_model=AdminOverviewOut)
+def admin_overview(db: Session = Depends(get_db), _: User = Depends(require_roles(UserRole.admin))):
+    return AdminOverviewOut(
+        registered_students=db.scalar(select(func.count()).select_from(Student)) or 0,
+        active_courses=db.scalar(select(func.count()).select_from(Course)) or 0,
+        pending_registrations=db.scalar(select(func.count()).select_from(PendingStudent).where(PendingStudent.status == RegistrationStatus.pending)) or 0,
+    )
+
+
+@app.get("/roster", response_model=list[RosterCourseOut])
+def lecturer_roster(db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
+    courses = db.scalars(select(Course).where(Course.lecturer_id == lecturer.id).order_by(Course.code)).all()
+    result = []
+    for course in courses:
+        rows = db.execute(
+            select(Student, User)
+            .join(CourseEnrollment, CourseEnrollment.student_id == Student.id)
+            .join(User, Student.user_id == User.id)
+            .where(CourseEnrollment.course_id == course.id)
+            .order_by(User.name)
+        ).all()
+        result.append(
+            RosterCourseOut(
+                course_code=course.code,
+                course_title=course.title,
+                students=[RosterStudentOut(name=user.name, matric_no=student.matric_no, department=student.department, level=student.level) for student, user in rows],
+            )
+        )
+    return result
+
+
+@app.get("/courses", response_model=list[CourseOut])
+def list_courses(db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.lecturer, UserRole.admin))):
+    query = select(Course)
+    if user.role == UserRole.lecturer:
+        query = query.where(Course.lecturer_id == user.id)
+    courses = db.scalars(query.order_by(Course.code)).all()
+    return [CourseOut(id=c.id, code=c.code, title=c.title) for c in courses]
+
+
+@app.post("/schedule", response_model=ScheduleOut, status_code=status.HTTP_201_CREATED)
+def add_schedule(payload: ScheduleCreate, db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
+    course = get_or_create_course(db, payload.course_code, payload.course_title, lecturer)
+    entry = ClassSchedule(course_id=course.id, day_of_week=payload.day_of_week, start_time=payload.start_time, duration_minutes=payload.duration_minutes)
+    db.add(entry)
+    db.commit()
+    return ScheduleOut(id=entry.id, course_code=course.code, course_title=course.title, day_of_week=entry.day_of_week, start_time=entry.start_time, duration_minutes=entry.duration_minutes)
+
+
+@app.get("/schedule", response_model=list[ScheduleOut])
+def list_schedule(db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.lecturer, UserRole.admin))):
+    query = select(ClassSchedule, Course).join(Course, ClassSchedule.course_id == Course.id)
+    if user.role == UserRole.lecturer:
+        query = query.where(Course.lecturer_id == user.id)
+    rows = db.execute(query.order_by(ClassSchedule.day_of_week, ClassSchedule.start_time)).all()
+    return [ScheduleOut(id=entry.id, course_code=course.code, course_title=course.title, day_of_week=entry.day_of_week, start_time=entry.start_time, duration_minutes=entry.duration_minutes) for entry, course in rows]
+
+
+@app.delete("/schedule/{schedule_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_schedule(schedule_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.lecturer, UserRole.admin))):
+    row = db.execute(select(ClassSchedule, Course).join(Course, ClassSchedule.course_id == Course.id).where(ClassSchedule.id == schedule_id)).first()
+    if not row:
+        raise HTTPException(404, "Schedule entry was not found.")
+    entry, course = row
+    if user.role == UserRole.lecturer and course.lecturer_id != user.id:
+        raise HTTPException(404, "Schedule entry was not found.")
+    db.delete(entry)
+    db.commit()
+
+
+@app.get("/sessions/current", response_model=SessionOut | None)
+def current_session(db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
+    sync_scheduled_sessions(db)
+    now = utcnow()
+    row = db.execute(
+        select(AttendanceSession, Course)
+        .join(Course, AttendanceSession.course_id == Course.id)
+        .where(AttendanceSession.lecturer_id == lecturer.id, AttendanceSession.status == SessionStatus.open, AttendanceSession.ends_at > now)
+        .order_by(AttendanceSession.started_at.desc())
+    ).first()
+    if not row:
+        return None
+    session, course = row
+    return SessionOut(session_id=session.id, course_code=course.code, status=session.status.value, ends_at=session.ends_at)
+
+
+@app.post("/sessions", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
+def create_session(payload: SessionCreate, db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
+    course = get_or_create_course(db, payload.course_code, payload.course_title, lecturer)
     now = utcnow()
     session = AttendanceSession(course_id=course.id, lecturer_id=lecturer.id, started_at=now, ends_at=now + timedelta(minutes=payload.duration_minutes), status=SessionStatus.open)
     db.add(session)
@@ -125,6 +340,7 @@ def create_session(payload: SessionCreate, db: Session = Depends(get_db), lectur
 
 @app.get("/sessions/open")
 def list_open_sessions(db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.student))):
+    sync_scheduled_sessions(db)
     student = db.scalar(select(Student).where(Student.user_id == user.id))
     if not student:
         raise HTTPException(404, "Student profile was not found.")
@@ -147,9 +363,9 @@ def list_open_sessions(db: Session = Depends(get_db), user: User = Depends(requi
 def rotate_qr(session_id: str, db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
     session = db.get(AttendanceSession, session_id)
     now = utcnow()
-    if not session or session.lecturer_id != lecturer.id or session.status != SessionStatus.open or session.ends_at.replace(tzinfo=session.ends_at.tzinfo or now.tzinfo) <= now:
+    if not session or session.lecturer_id != lecturer.id or session.status != SessionStatus.open or as_aware(session.ends_at) <= now:
         raise HTTPException(409, "Session is closed or expired.")
-    expires_at = min(now + timedelta(seconds=settings.qr_ttl_seconds), session.ends_at.replace(tzinfo=session.ends_at.tzinfo or now.tzinfo))
+    expires_at = min(now + timedelta(seconds=settings.qr_ttl_seconds), as_aware(session.ends_at))
     raw = new_qr_token(session_id, expires_at)
     row = QRToken(session_id=session_id, token_hash=token_hash(raw), issued_at=now, expires_at=expires_at)
     db.add(row)
@@ -220,13 +436,13 @@ def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), 
     session = db.get(AttendanceSession, payload.session_id)
     student = db.scalar(select(Student).where(Student.user_id == user.id))
     qr = db.scalar(select(QRToken).where(QRToken.token_hash == token_hash(payload.qr_token), QRToken.session_id == payload.session_id))
-    if not session or session.status != SessionStatus.open or session.ends_at.replace(tzinfo=session.ends_at.tzinfo or now.tzinfo) <= now:
+    if not session or session.status != SessionStatus.open or as_aware(session.ends_at) <= now:
         raise HTTPException(409, "Attendance session is not open.")
     if not student:
         raise HTTPException(404, "Student is not enrolled.")
     if not db.scalar(select(CourseEnrollment).where(CourseEnrollment.course_id == session.course_id, CourseEnrollment.student_id == student.id)):
         raise HTTPException(403, "You are not enrolled in the course for this attendance session.")
-    qr_valid = bool(qr and signature_is_valid(payload.qr_token) and qr.expires_at.replace(tzinfo=qr.expires_at.tzinfo or now.tzinfo) >= now)
+    qr_valid = bool(qr and signature_is_valid(payload.qr_token) and as_aware(qr.expires_at) >= now)
     if not qr_valid:
         raise HTTPException(422, "QR expired or invalid. Ask the lecturer to refresh it.")
     face_template = db.scalar(select(FaceEmbedding).where(FaceEmbedding.student_id == student.id))

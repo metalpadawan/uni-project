@@ -1,9 +1,10 @@
 import math
+import os
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="SmartAttend Face Service", version="0.1.0")
-THRESHOLD = 0.6
+THRESHOLD = float(os.getenv("FACE_DISTANCE_THRESHOLD", "0.6"))
 
 
 class FaceVerification(BaseModel):
