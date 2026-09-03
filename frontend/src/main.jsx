@@ -382,7 +382,7 @@ function App() {
       setBusy(false);
     }
   }
-  async function finish({ embedding, token, liveness }) {
+  async function finish({ frameA, frameB, token }) {
     if (!session) {
       setError("Choose an open attendance session first.");
       return;
@@ -393,8 +393,8 @@ function App() {
       await api.checkIn({
         session_id: session.session_id,
         qr_token: token,
-        captured_embedding: embedding,
-        liveness_passed: liveness,
+        frame_a: frameA,
+        frame_b: frameB,
       });
       setDone(true);
     } catch (e) {

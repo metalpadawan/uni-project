@@ -48,8 +48,8 @@ class QRTokenOut(BaseModel):
 class CheckIn(BaseModel):
     session_id: str
     qr_token: str
-    captured_embedding: list[float] = Field(min_length=128, max_length=128)
-    liveness_passed: bool
+    frame_a: str
+    frame_b: str
 
 
 class StudentEnroll(BaseModel):
@@ -59,7 +59,7 @@ class StudentEnroll(BaseModel):
     matric_no: str = Field(min_length=5, max_length=40)
     department: str = Field(default="Computer Science", min_length=2, max_length=160)
     level: int = Field(default=400, ge=100, le=900)
-    face_embedding: list[float] = Field(min_length=128, max_length=128)
+    photo: str
     biometric_consent: bool
 
 
@@ -70,7 +70,7 @@ class StudentRegisterRequest(BaseModel):
     matric_no: str = Field(min_length=5, max_length=40)
     department: str = Field(default="Computer Science", min_length=2, max_length=160)
     level: int = Field(default=400, ge=100, le=900)
-    face_embedding: list[float] = Field(min_length=128, max_length=128)
+    photo: str
     biometric_consent: bool
 
 

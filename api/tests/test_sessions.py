@@ -63,7 +63,7 @@ def test_expired_session_is_rejected_before_qr_or_face_checks(db):
     db.add_all([student, course]); db.flush()
     session = AttendanceSession(course_id=course.id, lecturer_id=lecturer.id, started_at=utcnow() - timedelta(hours=2), ends_at=utcnow() - timedelta(minutes=1), status=SessionStatus.open)
     db.add_all([CourseEnrollment(course_id=course.id, student_id=student.id), session]); db.commit()
-    payload = CheckIn(session_id=session.id, qr_token="invalid", captured_embedding=[0.0] * 128, liveness_passed=True)
+    payload = CheckIn(session_id=session.id, qr_token="invalid", frame_a="frame-a", frame_b="frame-b")
 
     with pytest.raises(HTTPException) as error:
         request = Request({"type": "http", "method": "POST", "path": "/attendance/checkin", "headers": [], "client": ("test", 1234)})
@@ -99,7 +99,7 @@ def checkin_setup(db):
 def test_combined_checkin_writes_present_only_after_both_checks(db, monkeypatch):
     student_user, session, raw = checkin_setup(db)
     monkeypatch.setattr("app.main.httpx.post", lambda *args, **kwargs: FaceResponse(True))
-    payload = CheckIn(session_id=session.id, qr_token=raw, captured_embedding=[0.1] * 128, liveness_passed=True)
+    payload = CheckIn(session_id=session.id, qr_token=raw, frame_a="frame-a", frame_b="frame-b")
 
     result = check_in.__wrapped__(None, payload, db, student_user)
 
@@ -110,7 +110,7 @@ def test_combined_checkin_writes_present_only_after_both_checks(db, monkeypatch)
 def test_face_mismatch_is_audited_and_allows_a_later_valid_retry(db, monkeypatch):
     student_user, session, raw = checkin_setup(db)
     monkeypatch.setattr("app.main.httpx.post", lambda *args, **kwargs: FaceResponse(False))
-    payload = CheckIn(session_id=session.id, qr_token=raw, captured_embedding=[0.9] * 128, liveness_passed=True)
+    payload = CheckIn(session_id=session.id, qr_token=raw, frame_a="frame-a", frame_b="frame-b")
 
     with pytest.raises(HTTPException) as error:
         check_in.__wrapped__(None, payload, db, student_user)

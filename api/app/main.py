@@ -93,7 +93,22 @@ def demo_login(request: Request, role: UserRole, db: Session = Depends(get_db)):
     return token_pair(user, db)
 
 
-def create_student_account(db: Session, *, name: str, email: str, password_hash: str, matric_no: str, department: str, level: int, face_embedding: list[float]) -> Student:
+def get_face_embedding(photo: str) -> list[float]:
+    """Asks face-service to detect a face in the photo and return its embedding — the server, not
+    the client, decides what a submitted photo's biometric data is."""
+    try:
+        response = httpx.post(f"{settings.face_service_url}/enroll", json={"photo": photo}, timeout=10.0)
+    except httpx.HTTPError:
+        raise HTTPException(503, "Face verification service is unavailable. Please try again.")
+    if response.status_code == 422:
+        detail = response.json().get("detail") if response.content else None
+        raise HTTPException(422, detail or "No face was detected in the photo. Center your face and try again.")
+    if not response.is_success:
+        raise HTTPException(503, "Face verification service is unavailable. Please try again.")
+    return response.json()["embedding"]
+
+
+def create_student_account(db: Session, *, name: str, email: str, password_hash: str, matric_no: str, department: str, level: int, embedding: list[float]) -> Student:
     if db.scalar(select(Student).where(Student.matric_no == matric_no)):
         raise HTTPException(409, "A student with this matric number already exists.")
     if db.scalar(select(User).where(User.email == email)):
@@ -102,7 +117,7 @@ def create_student_account(db: Session, *, name: str, email: str, password_hash:
     db.add(user); db.flush()
     student = Student(user_id=user.id, matric_no=matric_no, department=department, level=level)
     db.add(student); db.flush()
-    db.add(FaceEmbedding(student_id=student.id, embedding=face_embedding, enrolled_at=utcnow()))
+    db.add(FaceEmbedding(student_id=student.id, embedding=embedding, enrolled_at=utcnow()))
     return student
 
 
@@ -110,6 +125,7 @@ def create_student_account(db: Session, *, name: str, email: str, password_hash:
 def enroll_student(payload: StudentEnroll, db: Session = Depends(get_db), _: User = Depends(require_roles(UserRole.admin))):
     if not payload.biometric_consent:
         raise HTTPException(422, "Explicit biometric consent is required before face enrolment.")
+    embedding = get_face_embedding(payload.photo)
     student = create_student_account(
         db,
         name=payload.name,
@@ -118,7 +134,7 @@ def enroll_student(payload: StudentEnroll, db: Session = Depends(get_db), _: Use
         matric_no=payload.matric_no,
         department=payload.department,
         level=payload.level,
-        face_embedding=payload.face_embedding,
+        embedding=embedding,
     )
     db.commit()
     return {"id": student.id, "name": payload.name, "matric_no": student.matric_no, "face_enrolled": True}
@@ -134,6 +150,7 @@ def register_student(request: Request, payload: StudentRegisterRequest, db: Sess
         raise HTTPException(409, "An account with this email already exists.")
     if db.scalar(select(PendingStudent).where(PendingStudent.email == email, PendingStudent.status == RegistrationStatus.pending)):
         raise HTTPException(409, "A registration request for this email is already pending review.")
+    embedding = get_face_embedding(payload.photo)
     request_row = PendingStudent(
         name=payload.name,
         email=email,
@@ -141,7 +158,7 @@ def register_student(request: Request, payload: StudentRegisterRequest, db: Sess
         matric_no=payload.matric_no,
         department=payload.department,
         level=payload.level,
-        face_embedding=payload.face_embedding,
+        face_embedding=embedding,
         biometric_consent=payload.biometric_consent,
         status=RegistrationStatus.pending,
         requested_at=utcnow(),
@@ -170,7 +187,7 @@ def approve_pending_student(request_id: str, db: Session = Depends(get_db), admi
         matric_no=pending.matric_no,
         department=pending.department,
         level=pending.level,
-        face_embedding=pending.face_embedding,
+        embedding=pending.face_embedding,
     )
     pending.status = RegistrationStatus.approved
     pending.reviewed_at = utcnow()
@@ -451,8 +468,8 @@ def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), 
     try:
         response = httpx.post(
             f"{settings.face_service_url}/verify",
-            json={"enrolled_embedding": face_template.embedding, "captured_embedding": payload.captured_embedding, "liveness_passed": payload.liveness_passed},
-            timeout=5.0,
+            json={"enrolled_embedding": face_template.embedding, "frame_a": payload.frame_a, "frame_b": payload.frame_b},
+            timeout=10.0,
         )
         face_result = response.json()
     except (httpx.HTTPError, ValueError):

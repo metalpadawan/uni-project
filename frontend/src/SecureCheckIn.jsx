@@ -10,10 +10,11 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
   const [stage, setStage] = useState("face");
   const {
     videoRef: faceVideo,
-    descriptor,
-    blinked,
+    captured,
     message: faceMessage,
-  } = useFaceCapture(stage === "face");
+    capturing,
+    capture,
+  } = useFaceCapture(stage === "face", { frames: 2, gapMs: 1000 });
   const qrVideo = useRef(null),
     stream = useRef(null),
     animation = useRef(null);
@@ -62,6 +63,7 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
   }
 
   const message = stage === "face" ? faceMessage : qrMessage;
+  const facesReady = captured.length === 2;
 
   return (
     <div className="secure-capture">
@@ -117,19 +119,21 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
         </p>
       )}
       {stage === "face" ? (
-        <button
-          className="primary full"
-          disabled={!descriptor || !blinked}
-          onClick={beginQr}
-        >
-          Continue after blink <QrCode size={17} />
-        </button>
+        facesReady ? (
+          <button className="primary full" onClick={beginQr}>
+            Continue <QrCode size={17} />
+          </button>
+        ) : (
+          <button className="primary full" disabled={capturing} onClick={capture}>
+            {capturing ? "Capturing…" : "Capture face"} <Camera size={17} />
+          </button>
+        )
       ) : (
         <button
           className="primary full"
           disabled={!token || busy}
           onClick={() =>
-            onComplete({ embedding: descriptor, token, liveness: blinked })
+            onComplete({ frameA: captured[0], frameB: captured[1], token })
           }
         >
           {busy ? "Verifying both checks…" : "Verify face + QR"}{" "}

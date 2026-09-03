@@ -29,6 +29,6 @@ services:
     command: sh -c "pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8001 --reload"
     volumes: ["./face-service:/app"]
     environment:
-      FACE_DISTANCE_THRESHOLD: ${FACE_DISTANCE_THRESHOLD:-0.6}
+      FACE_DISTANCE_THRESHOLD: ${FACE_DISTANCE_THRESHOLD:-1.128}
 volumes:
   smart_attend_db:

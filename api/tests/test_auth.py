@@ -189,7 +189,7 @@ def test_enroll_student_requires_biometric_consent(db):
         email="new.student@example.test",
         temporary_password="password123",
         matric_no="21/CSC/900",
-        face_embedding=[0.1] * 128,
+        photo="dummy-photo",
         biometric_consent=False,
     )
 

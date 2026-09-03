@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { Check } from "lucide-react";
+import { Camera, Check } from "lucide-react";
 import { useFaceCapture } from "./useFaceCapture";
 import { api } from "./api";
 
 export default function EnrollStudent() {
   const [consent, setConsent] = useState(false);
-  const { videoRef, descriptor, message } = useFaceCapture(consent);
+  const { videoRef, captured, message, capturing, capture } = useFaceCapture(consent);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [success, setSuccess] = useState(null);
+  const photoReady = captured.length === 1;
 
   async function submit(e) {
     e.preventDefault();
@@ -25,7 +26,7 @@ export default function EnrollStudent() {
         matric_no: f.get("matric_no").trim(),
         department: f.get("department").trim(),
         level: Number(f.get("level")),
-        face_embedding: descriptor,
+        photo: captured[0],
         biometric_consent: consent,
       });
       setSuccess(created);
@@ -122,17 +123,27 @@ export default function EnrollStudent() {
             <p className="capture-message" role="status">
               {message}
             </p>
+            {!photoReady && (
+              <button
+                type="button"
+                className="outline"
+                disabled={capturing}
+                onClick={capture}
+              >
+                {capturing ? "Capturing…" : "Capture photo"} <Camera size={15} />
+              </button>
+            )}
           </div>
         )}
         <button
           className="primary"
-          disabled={busy || !consent || !descriptor}
+          disabled={busy || !consent || !photoReady}
           style={{ gridColumn: "1 / -1" }}
         >
           {busy
             ? "Enrolling…"
-            : consent && !descriptor
-              ? "Waiting for a clear face…"
+            : consent && !photoReady
+              ? "Capture a photo first"
               : "Enrol student"}
         </button>
       </form>
