@@ -1,0 +1,45 @@
+databases:
+  - name: smartattend-db
+    plan: free
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: smartattend-face-service
+    runtime: docker
+    dockerfilePath: ./face-service/Dockerfile
+    dockerContext: ./face-service
+    plan: free
+    envVars:
+      - key: FACE_DISTANCE_THRESHOLD
+        value: "1.128"
+      - key: FACE_MIN_FRAME_DIFFERENCE
+        value: "6.0"
+
+  - type: web
+    name: smartattend-api
+    runtime: docker
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: ./api
+    plan: free
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: smartattend-db
+          property: connectionString
+      - key: QR_SIGNING_SECRET
+        generateValue: true
+      - key: JWT_SECRET
+        generateValue: true
+      - key: QR_TTL_SECONDS
+        value: "30"
+      - key: FACE_DISTANCE_THRESHOLD
+        value: "1.128"
+      - key: FACE_SERVICE_URL
+        value: "https://smartattend-face-service.onrender.com"
+      - key: ALLOWED_ORIGINS
+        value: "https://uni-project-drab.vercel.app"
+      - key: DEMO_MODE
+        value: "true"
+      - key: TIMEZONE
+        value: "Africa/Lagos"

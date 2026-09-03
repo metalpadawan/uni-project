@@ -1,6 +1,6 @@
 # SmartAttend — Setup Guide
 
-This walks through getting SmartAttend running from a fresh `git clone`, on either of two paths: **Docker Compose** (fewer moving parts, recommended if you just want it running) or **native/uv** (what this project was actually developed and tested against, and what you need if you're going to develop on it). Both are covered fully below.
+This walks through getting SmartAttend running from a fresh `git clone`, on three paths: **Docker Compose** (fewer moving parts, recommended if you just want it running locally), **native/uv** (what this project was actually developed and tested against, and what you need if you're going to develop on it), or **Vercel + Render** (a real public URL, for demos/coursework submission). All three are covered fully below.
 
 The system has three services:
 
@@ -10,6 +10,8 @@ The system has three services:
 | `api` | FastAPI backend — auth, courses, sessions, attendance | 8000 |
 | `face-service` | FastAPI face-detection/verification microservice | 8001 |
 | `db` | PostgreSQL + pgvector (native path can substitute SQLite) | 5432 |
+
+> The repository root itself is not a website — if you open this folder directly in a browser or point a generic static file server at it, you'll just see a directory listing. The frontend has to be started (`npm run dev`, from the steps below) and opened at the URL that command prints, not by browsing the folder.
 
 ---
 
@@ -142,6 +144,42 @@ Two separate Python services means **two separate virtual environments** — `ap
      .venv/Scripts/python.exe -m pytest -q
      ```
      Use `python -m pytest`, not `uv run pytest` or a bare `pytest` — on at least one Windows machine this project was developed on, a Windows "Application Control" policy blocked `pytest.exe`'s entrypoint specifically while allowing the same test run via `python -m pytest`. If your `pytest` invocation silently fails or gets blocked with no clear Python-level error, this is the first thing to try.
+
+---
+
+## Path C: Vercel (frontend) + Render (backend) — a real public URL
+
+Vercel only serves static/frontend sites — it can't run the stateful `api` + `face-service` + Postgres trio this project needs. The frontend deploys to Vercel; the backend deploys to Render, which can run Docker containers and a managed Postgres database.
+
+### 1. Deploy the frontend to Vercel
+The repo root already has [vercel.json](vercel.json) telling Vercel to install and build from inside `frontend/` (Vercel's own root-level install otherwise finds nothing to install, since `package.json` at repo root has no dependencies — this is the fix for a `vite: command not found` build failure if you hit it). Connect the repo in Vercel as normal; no other config needed until step 3.
+
+### 2. Deploy the backend to Render
+The repo root has [render.yaml](render.yaml), a Render **Blueprint** that defines all three backend pieces in one file: a managed Postgres database (`smartattend-db`), the `api` service, and the `face-service` service, each built from its own `Dockerfile` (`api/Dockerfile`, `face-service/Dockerfile`).
+
+1. In the Render dashboard: **New +** → **Blueprint** → connect this GitHub repo. Render reads `render.yaml` and proposes all three resources — confirm and deploy.
+2. Wait for `smartattend-face-service` and `smartattend-api` to both show "Live." `smartattend-api` depends on `smartattend-face-service`'s public URL (set in `render.yaml` as `FACE_SERVICE_URL`) — if you rename the face-service in the Render dashboard, its public URL changes too, so update `FACE_SERVICE_URL` in `render.yaml` (or directly in the Render dashboard's environment tab for `smartattend-api`) to match.
+3. `render.yaml` sets `ALLOWED_ORIGINS` to `https://uni-project-drab.vercel.app` — if your Vercel URL is different, update that value (in `render.yaml` or the Render dashboard) to your actual deployed frontend origin, exactly (protocol + host, no trailing slash), or every request from the frontend will fail CORS.
+4. **Apply the database migrations** — Render's managed Postgres doesn't auto-run `database/001_initial.sql` the way the `pgvector/pgvector` Docker image does locally. From the Render Postgres dashboard's "Connect" tab, copy the **External Connection String**, then from a machine with `psql` installed:
+   ```
+   psql "<external-connection-string>" -f database/001_initial.sql
+   psql "<external-connection-string>" -f database/002_attendance_attempts.sql
+   psql "<external-connection-string>" -f database/003_refresh_tokens.sql
+   psql "<external-connection-string>" -f database/004_class_schedules.sql
+   psql "<external-connection-string>" -f database/005_pending_students.sql
+   ```
+   `001_initial.sql` includes `CREATE EXTENSION IF NOT EXISTS vector;` — Render Postgres supports pgvector natively, so this succeeds without any extra dashboard step. If it errors with a permissions issue, Render's docs say to contact `support@render.com` to have the extension enabled on that database first.
+
+### 3. Connect the frontend to the backend
+In the Vercel project's **Settings → Environment Variables**, add:
+```
+VITE_API_URL = https://smartattend-api.onrender.com
+```
+(use `smartattend-api`'s actual Render URL — check the Render dashboard if you renamed the service). Redeploy the frontend (Vercel → Deployments → Redeploy) so the new env var is baked into the build — Vite inlines `VITE_*` variables at build time, so just setting the variable without a redeploy has no effect.
+
+### Two things worth knowing about this path
+- **Render's free tier spins services down after inactivity** and takes tens of seconds to wake back up on the next request. `QR_TTL_SECONDS` defaults to 30 — a cold-started `api` can plausibly take longer than that to respond to the very first request after idle, which would show up as an expired/failed QR check-in on that first attempt. If you're demoing live, hit the site once a minute or two before you actually need it to "wake" the services first; a paid Render plan removes this entirely.
+- `render.yaml` sets `DEMO_MODE=true` so the one-click demo logins (admin/lecturer/student) work out of the box — this is what answers "I don't have any credentials to log in with." Per [README.md](README.md) and [PRIVACY.md](PRIVACY.md), turn this off (`DEMO_MODE=false`, along with real rotated secrets) before this is ever shown to real students.
 
 ---
 

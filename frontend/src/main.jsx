@@ -15,7 +15,6 @@ import {
   Check,
   Clock3,
   BookOpen,
-  ChevronDown,
   Play,
   X,
   Menu,
