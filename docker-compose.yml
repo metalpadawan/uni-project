@@ -9,6 +9,11 @@ services:
     volumes:
       - smart_attend_db:/var/lib/postgresql/data
       - ./database/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smart_attend -d smart_attend"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
   api:
     image: python:3.12-slim
     working_dir: /app
@@ -22,11 +27,21 @@ services:
       FACE_SERVICE_URL: http://face-service:8001
       ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     ports: ["8000:8000"]
-    depends_on: [db, face-service]
+    # `db` must be accepting connections, not just started, before the api container's
+    # startup-time `Base.metadata.create_all()` call runs — plain depends_on only waits
+    # for the container to start, which races Postgres's own init on a cold volume.
+    depends_on:
+      db:
+        condition: service_healthy
+      face-service:
+        condition: service_started
   face-service:
     image: python:3.12-slim
     working_dir: /app
-    command: sh -c "pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8001 --reload"
+    # opencv-python-headless still needs a couple of system shared libraries on a bare
+    # Debian slim image (libGL/libglib) despite the "headless" name — not needed for
+    # face-service's own code, but for OpenCV's transitive dependencies.
+    command: sh -c "apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/* && pip install -r requirements.txt && uvicorn main:app --host 0.0.0.0 --port 8001 --reload"
     volumes: ["./face-service:/app"]
     environment:
       FACE_DISTANCE_THRESHOLD: ${FACE_DISTANCE_THRESHOLD:-1.128}
