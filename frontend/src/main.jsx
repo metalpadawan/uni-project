@@ -70,7 +70,6 @@ function LoginScreen({ onLogin, demoMode }) {
       <section className="login-brand">
         <Logo />
         <div>
-          <span className="eyebrow">SMART CAMPUS SECURITY</span>
           <h1>Attendance that proves presence.</h1>
           <p>
             Face recognition and a short-lived classroom QR code work together
@@ -194,6 +193,39 @@ function Logo() {
       <div>
         Smart<span>Attend</span>
         <small>UNICROSS</small>
+      </div>
+    </div>
+  );
+}
+const NOW_SERVING_SEGMENTS = 12;
+function NowServing({ qr }) {
+  const [remaining, setRemaining] = useState(0);
+
+  useEffect(() => {
+    if (!qr?.expires_at) return;
+    const tick = () =>
+      setRemaining(
+        Math.max(0, Math.round((new Date(qr.expires_at) - Date.now()) / 1000)),
+      );
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [qr?.expires_at]);
+
+  const total = qr?.expires_in || 30;
+  const lit = Math.round((remaining / total) * NOW_SERVING_SEGMENTS);
+
+  return (
+    <div className="now-serving">
+      <p className="now-serving-label">Now serving · rotates automatically</p>
+      <div className="now-serving-clock">
+        {String(remaining).padStart(2, "0")}
+        <small> sec</small>
+      </div>
+      <div className="now-serving-track" aria-hidden="true">
+        {Array.from({ length: NOW_SERVING_SEGMENTS }).map((_, i) => (
+          <i key={i} className={i < lit ? "chase" : ""} />
+        ))}
       </div>
     </div>
   );
@@ -544,7 +576,6 @@ function App() {
           <>
             <section className="welcome">
               <div>
-                <span className="eyebrow">SATURDAY, 1 AUGUST</span>
                 <h2>Good afternoon, Dr. Umoh.</h2>
                 <p>Here’s what’s happening with your classes today.</p>
               </div>
@@ -764,19 +795,23 @@ function App() {
                   <i />
                   LIVE SESSION
                 </span>
-                <h2 id="modal-title">CSC 421 attendance is open</h2>
+                <h2 id="modal-title">
+                  {session?.course_code || "Class"} attendance is open
+                </h2>
                 <p>
                   Project this rotating QR code. Students must also pass face
                   verification.
                 </p>
                 {qr && (
-                  <img
-                    className="qr-image"
-                    src={qr.qr_data_url}
-                    alt="Time-limited CSC 421 attendance QR code"
-                  />
+                  <div className="ticket-frame">
+                    <img
+                      className="qr-image"
+                      src={qr.qr_data_url}
+                      alt={`Time-limited ${session?.course_code || "class"} attendance QR code`}
+                    />
+                  </div>
                 )}
-                <small>Expires every {qr?.expires_in || 30} seconds</small>
+                <NowServing qr={qr} />
                 <button
                   className="primary full"
                   onClick={async () => {
@@ -918,7 +953,6 @@ function PortalView({
       <section className="portal-page">
         <div className="portal-hero student-hero">
           <div>
-            <span className="eyebrow">STUDENT PORTAL</span>
             <h2>{page === "Check in" ? "Mark attendance securely" : page}</h2>
             <p>
               {page === "Check in"
@@ -1012,7 +1046,6 @@ function PortalView({
     <section className="portal-page">
       <div className="workspace-head">
         <div>
-          <span className="eyebrow">ADMIN PORTAL</span>
           <h2>{page}</h2>
           <p>
             Manage the people, courses, and biometric enrolment behind
