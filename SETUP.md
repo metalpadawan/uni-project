@@ -160,15 +160,11 @@ The repo root has [render.yaml](render.yaml), a Render **Blueprint** that define
 1. In the Render dashboard: **New +** → **Blueprint** → connect this GitHub repo. Render reads `render.yaml` and proposes all three resources — confirm and deploy.
 2. Wait for `smartattend-face-service` and `smartattend-api` to both show "Live." `smartattend-api` depends on `smartattend-face-service`'s public URL (set in `render.yaml` as `FACE_SERVICE_URL`) — if you rename the face-service in the Render dashboard, its public URL changes too, so update `FACE_SERVICE_URL` in `render.yaml` (or directly in the Render dashboard's environment tab for `smartattend-api`) to match.
 3. `render.yaml` sets `ALLOWED_ORIGINS` to `https://uni-project-drab.vercel.app` — if your Vercel URL is different, update that value (in `render.yaml` or the Render dashboard) to your actual deployed frontend origin, exactly (protocol + host, no trailing slash), or every request from the frontend will fail CORS.
-4. **Apply the database migrations** — Render's managed Postgres doesn't auto-run `database/001_initial.sql` the way the `pgvector/pgvector` Docker image does locally. From the Render Postgres dashboard's "Connect" tab, copy the **External Connection String**, then from a machine with `psql` installed:
+4. **Enable the `vector` extension** — this is the one manual database step that's actually required. `api/app/main.py` runs `Base.metadata.create_all(bind=engine)` on every startup, which builds every table (including the migration-file ones — `class_schedules`, `pending_students`, `refresh_tokens`, `attendance_attempts`) straight from the SQLAlchemy models in `api/app/models.py`, so you do **not** need to run `database/00N_*.sql` by hand against Render. The one thing `create_all()` can't do is create a Postgres extension — `FaceEmbedding.embedding`'s `vector(128)` column type doesn't exist until `pgvector` is enabled on that database. From the Render Postgres dashboard's "Connect" tab, copy the **External Connection String**, then, from a machine with `psql` installed:
    ```
-   psql "<external-connection-string>" -f database/001_initial.sql
-   psql "<external-connection-string>" -f database/002_attendance_attempts.sql
-   psql "<external-connection-string>" -f database/003_refresh_tokens.sql
-   psql "<external-connection-string>" -f database/004_class_schedules.sql
-   psql "<external-connection-string>" -f database/005_pending_students.sql
+   psql "<external-connection-string>" -c "CREATE EXTENSION IF NOT EXISTS vector;"
    ```
-   `001_initial.sql` includes `CREATE EXTENSION IF NOT EXISTS vector;` — Render Postgres supports pgvector natively, so this succeeds without any extra dashboard step. If it errors with a permissions issue, Render's docs say to contact `support@render.com` to have the extension enabled on that database first.
+   Do this *before* `smartattend-api` first starts (or before its next redeploy) — Render Postgres supports pgvector natively, so this succeeds without any dashboard toggle. If it errors with a permissions issue, Render's docs say to contact `support@render.com` to have the extension enabled on that database first. Skipping this step is the most likely reason `smartattend-api` fails to deploy while `smartattend-db` and `smartattend-face-service` succeed — `create_all()` crashes on the `face_embeddings` table and the app never starts.
 
 ### 3. Connect the frontend to the backend
 In the Vercel project's **Settings → Environment Variables**, add:
