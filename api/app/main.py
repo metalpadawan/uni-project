@@ -1,6 +1,7 @@
 import base64
 import io
 from datetime import timedelta
+from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -430,7 +431,7 @@ def list_open_sessions(db: Session = Depends(get_db), user: User = Depends(requi
 
 
 @app.post("/sessions/{session_id}/qr", response_model=QRTokenOut)
-def rotate_qr(session_id: str, db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
+def rotate_qr(session_id: str, request: Request, db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
     session = db.get(AttendanceSession, session_id)
     now = utcnow()
     if not session or session.lecturer_id != lecturer.id or session.status != SessionStatus.open or as_aware(session.ends_at) <= now:
@@ -440,11 +441,15 @@ def rotate_qr(session_id: str, db: Session = Depends(get_db), lecturer: User = D
     row = QRToken(session_id=session_id, token_hash=token_hash(raw), issued_at=now, expires_at=expires_at)
     db.add(row)
     db.commit()
-    qr_image = qrcode.make(raw)
+    # A phone camera recognizes a URL and opens the check-in page. The token is still
+    # signed, short lived, and verified server-side before attendance is recorded.
+    frontend_url = settings.public_frontend_url.rstrip("/") or request.headers.get("origin", "").rstrip("/") or "http://127.0.0.1:5173"
+    qr_url = f"{frontend_url}/?{urlencode({'session': session_id, 'qr': raw})}"
+    qr_image = qrcode.make(qr_url)
     buffer = io.BytesIO()
     qr_image.save(buffer, format="PNG")
     qr_data_url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
-    return QRTokenOut(token=raw, qr_data_url=qr_data_url, expires_at=expires_at, expires_in=settings.qr_ttl_seconds)
+    return QRTokenOut(token=raw, qr_url=qr_url, qr_data_url=qr_data_url, expires_at=expires_at, expires_in=settings.qr_ttl_seconds)
 
 
 @app.post("/sessions/{session_id}/close")

@@ -6,7 +6,7 @@ The system has three services:
 
 | Service | What it is | Port |
 |---|---|---|
-| `frontend` | React/Vite web app | 3000 |
+| `frontend` | React/Vite web app | 5173 |
 | `api` | FastAPI backend — auth, courses, sessions, attendance | 8000 |
 | `face-service` | FastAPI face-detection/verification microservice | 8001 |
 | `db` | PostgreSQL + pgvector (native path can substitute SQLite) | 5432 |
@@ -49,12 +49,12 @@ The system has three services:
    npm install
    npm run dev
    ```
-   This serves on `http://127.0.0.1:3000`. Use that exact origin, not `localhost:3000` — the API's CORS allow-list (`ALLOWED_ORIGINS` in `api/.env`) is matched exactly, and `127.0.0.1` vs `localhost` are different origins to a browser even though they resolve to the same place.
+   This serves on `http://127.0.0.1:5173`. Use that exact origin, not `localhost:5173` — the API's CORS allow-list is matched exactly, and `127.0.0.1` vs `localhost` are different origins to a browser even though they resolve to the same place.
 
 5. **Verify it's up:**
    - `curl http://localhost:8000/health` (or open it in a browser) should return a healthy JSON response.
    - `curl http://localhost:8001/health` likewise for face-service.
-   - Open `http://127.0.0.1:3000` — you should see the SmartAttend login screen. One-click demo logins appear only when you have explicitly set `DEMO_MODE=true`.
+   - Open `http://127.0.0.1:5173` — you should see the SmartAttend login screen. One-click demo logins appear only when you have explicitly set `DEMO_MODE=true`.
 
 ### Database initialization
 `docker-compose.yml` mounts the complete `database/` directory into Postgres's initialization directory. A fresh Docker volume therefore applies `001` through `005` in filename order. Existing database volumes are intentionally not modified by Docker initialization; apply any new numbered migration once against those environments before deploying code that needs it.
@@ -96,7 +96,7 @@ Two separate Python services means **two separate virtual environments** — `ap
    - For a pure local/no-Postgres setup, you can skip `DATABASE_URL` entirely if the codebase's SQLite fallback path is what you want to use — check `api/app/config.py` for the current default; otherwise point `DATABASE_URL` at a local Postgres instance you run yourself, in the same `postgresql+psycopg://user:pass@host:5432/dbname` shape as the example.
    - Set `QR_SIGNING_SECRET` and `JWT_SECRET` to real random values (see the `secrets.token_hex(32)` snippet above). The app refuses to start with the placeholder example values outside of an explicit local-dev exception — don't be surprised by a startup error here, it's intentional.
    - Set `FACE_SERVICE_URL=http://127.0.0.1:8001` (native services aren't on a Docker network, so use `127.0.0.1`, not the `face-service` hostname the Compose file uses).
-   - Leave `ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000` unless you're serving the frontend from somewhere else.
+   - Leave `ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173` unless you're serving the frontend from somewhere else.
 
 3. **Set up `face-service`** (separate venv, separate terminal or `cd` back out first):
    ```
@@ -126,11 +126,11 @@ Two separate Python services means **two separate virtual environments** — `ap
    npm install
    npm run dev
    ```
-   Serves on `http://127.0.0.1:3000` (matches `frontend/package.json`'s `dev` script, which explicitly binds `--host 127.0.0.1` — again, use that exact origin for CORS to work).
+   Serves on `http://127.0.0.1:5173` (the development server is reachable from devices on the same Wi-Fi so a phone can open a QR check-in link).
 
 7. **Verify:**
    - `http://localhost:8000/health` and `http://localhost:8001/health` both respond.
-   - `http://127.0.0.1:3000` loads the login screen; demo logins appear only if you explicitly set `DEMO_MODE=true`.
+   - `http://127.0.0.1:5173` loads the login screen; demo logins appear only if you explicitly set `DEMO_MODE=true`.
    - Run the test suite to confirm the `api` install is sound:
      ```
      cd api
@@ -210,7 +210,7 @@ Issues actually hit while building this project, in case you hit the same ones:
 - **`pydantic-core` build failure / asks for a Rust compiler.** You're on the wrong Python version — see above. This isn't a flaky wheel-hosting issue, it's version 3.14 genuinely lacking a prebuilt wheel at the time this was built.
 - **`face-service` fails to import `cv2` / OpenCV errors about missing shared libraries (`libGL.so.1` etc.), Docker path only.** This is why the Compose file installs `libgl1`/`libglib2.0-0` before `pip install` — `opencv-python-headless` still needs a couple of system graphics libraries despite the "headless" name. If you're running face-service outside Docker on a minimal Linux distro (not Windows/macOS), you may need to install those two packages yourself.
 - **`uv run pytest` does nothing / gets silently blocked (Windows only).** A Windows "Application Control" policy can block `pytest.exe`'s entrypoint specifically. Use `.venv/Scripts/python.exe -m pytest` instead — routes around the same block by invoking pytest as a module rather than an executable.
-- **Frontend requests fail with CORS errors in the browser console.** Almost always an origin mismatch — check that the URL you're loading the frontend from (`http://127.0.0.1:3000` vs `http://localhost:3000`) exactly matches an entry in `ALLOWED_ORIGINS`. They are different origins to a browser even though they point at the same machine.
+- **Frontend requests fail with CORS errors in the browser console.** Almost always an origin mismatch — check that the URL you're loading the frontend from (`http://127.0.0.1:5173` vs `http://localhost:5173`) exactly matches an entry in `ALLOWED_ORIGINS`. They are different origins to a browser even though they point at the same machine.
 - **First enroll/check-in request is very slow, then fast after that.** Expected — `face-service` downloads its two ONNX model files from GitHub on first use and caches them locally. Make sure the machine has outbound internet access for that first call; after that, it's fully local.
 - **Self-registration/scheduling endpoints error out after updating an existing Docker database.** Apply the newly added numbered migration files to that existing database, then restart the API. Fresh Docker volumes already receive all migrations automatically.
 - **A previously-enrolled account's face check always fails after pulling a newer version of this repo.** If the face-verification pipeline changed (embedding model, embedding dimensions), old enrollments are invalidated by design — the stored biometric template doesn't match what the new pipeline computes for the same face. Re-enroll the affected account.

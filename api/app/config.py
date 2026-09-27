@@ -10,7 +10,8 @@ class Settings(BaseSettings):
     qr_ttl_seconds: int = 30
     face_distance_threshold: float = 1.128
     face_service_url: str = "http://127.0.0.1:8001"
-    allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    public_frontend_url: str = ""
+    allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
     jwt_secret: str = DEV_DEFAULT_JWT_SECRET
     access_token_minutes: int = 15
     refresh_token_days: int = 7

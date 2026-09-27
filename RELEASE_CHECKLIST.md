@@ -32,7 +32,14 @@ Use this as the final handoff guide. Steps marked **You** require your accounts,
    npm install
    npm run dev
    ```
-6. **You:** Open `http://127.0.0.1:3000`, then confirm both `http://localhost:8000/health` and `http://localhost:8001/health` return healthy JSON.
+6. **You:** Open `http://127.0.0.1:5173`, then confirm both `http://localhost:8000/health` and `http://localhost:8001/health` return healthy JSON.
+
+### Phone QR testing on the same Wi-Fi
+
+1. **You:** Run `ipconfig` and copy the laptop's **IPv4 Address** for the Wi-Fi adapter, for example `192.168.1.25`.
+2. **You:** In the root `.env`, set `PUBLIC_FRONTEND_URL=http://192.168.1.25:5173` and append that same URL to `ALLOWED_ORIGINS`.
+3. **You:** Create `frontend/.env.local` with `VITE_API_URL=http://192.168.1.25:8000`, then restart Docker Compose and Vite. Allow Windows Firewall access on private networks if asked.
+4. **You:** Scan a newly refreshed QR code. It opens the student check-in link, preloads the short-lived QR token, and still requires student sign-in and live face verification.
 
 ## 3. Configure first real users
 

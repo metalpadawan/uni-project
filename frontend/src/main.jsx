@@ -230,6 +230,12 @@ function NowServing({ qr }) {
   );
 }
 function App() {
+  const [linkedCheckIn, setLinkedCheckIn] = useState(() => {
+    const link = new URLSearchParams(window.location.search);
+    const sessionId = link.get("session");
+    const token = link.get("qr");
+    return sessionId && token ? { sessionId, token } : null;
+  });
   const savedUser = JSON.parse(
     sessionStorage.getItem("smartattend_user") || "null",
   );
@@ -277,6 +283,18 @@ function App() {
       active = false;
     };
   }, [user, role, page]);
+  useEffect(() => {
+    if (!user || role !== "Student" || !linkedCheckIn || sessionsBusy || modal) return;
+    const selected = openSessions.find((item) => item.session_id === linkedCheckIn.sessionId);
+    if (!selected) return;
+    setSession(selected);
+    setQr(null);
+    setStep(1);
+    setDone(false);
+    setError("");
+    setModal("checkin");
+    window.history.replaceState({}, "", window.location.pathname);
+  }, [user, role, linkedCheckIn, sessionsBusy, openSessions, modal]);
   useEffect(() => {
     if (!user || role !== "Lecturer" || page !== "Dashboard" || modal) return;
     let active = true;
@@ -444,6 +462,7 @@ function App() {
   }
   function close() {
     setModal(null);
+    setLinkedCheckIn(null);
     setStep(1);
     setDone(false);
     setError("");
@@ -846,6 +865,7 @@ function App() {
                   course={session}
                   busy={busy}
                   error={error}
+                  initialToken={linkedCheckIn?.token || ""}
                   onComplete={finish}
                 />
               </React.Suspense>

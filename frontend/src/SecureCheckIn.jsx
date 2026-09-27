@@ -6,7 +6,16 @@ function stop(stream) {
   stream?.getTracks().forEach((track) => track.stop());
 }
 
-export default function SecureCheckIn({ course, busy, error, onComplete }) {
+function tokenFromQr(value) {
+  try {
+    const url = new URL(value);
+    return url.searchParams.get("qr") || value;
+  } catch {
+    return value;
+  }
+}
+
+export default function SecureCheckIn({ course, busy, error, onComplete, initialToken = "" }) {
   const [stage, setStage] = useState("face");
   const {
     videoRef: faceVideo,
@@ -19,7 +28,7 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
     stream = useRef(null),
     animation = useRef(null);
   const [qrMessage, setQrMessage] = useState("");
-  const [token, setToken] = useState("");
+  const [token, setToken] = useState(initialToken);
 
   useEffect(
     () => () => {
@@ -45,7 +54,7 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
             return (animation.current = requestAnimationFrame(scan));
           const codes = await detector.detect(qrVideo.current).catch(() => []);
           if (codes[0]?.rawValue) {
-            setToken(codes[0].rawValue);
+            setToken(tokenFromQr(codes[0].rawValue));
             setQrMessage("QR code captured. Ready to verify both checks.");
             stop(stream.current);
             return;
@@ -107,7 +116,7 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
           QR token
           <input
             value={token}
-            onChange={(event) => setToken(event.target.value.trim())}
+            onChange={(event) => setToken(tokenFromQr(event.target.value.trim()))}
             autoComplete="off"
             placeholder="Scan automatically or paste token"
           />
