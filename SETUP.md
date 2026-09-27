@@ -29,11 +29,11 @@ The system has three services:
    cd uni-project
    ```
 
-2. **Create your environment file.** Copy the example and fill in real secrets:
+2. **Create your Compose environment file.** Copy the root example and fill in real secrets:
    ```
-   cp api/.env.example api/.env
+   cp .env.example .env
    ```
-   At minimum, replace `QR_SIGNING_SECRET` and `JWT_SECRET` with your own random strings (32+ characters — `python -c "import secrets; print(secrets.token_hex(32))"` works well) if you intend this to be anything other than a throwaway local instance. Leave `DEMO_MODE=true` for local testing (it enables one-click demo logins); set it to `false` before showing this to anyone who isn't you.
+   On PowerShell, use `Copy-Item .env.example .env`. At minimum, replace `QR_SIGNING_SECRET` and `JWT_SECRET` with your own random strings (32+ characters — `python -c "import secrets; print(secrets.token_hex(32))"` works well). `DEMO_MODE` defaults to `false`; enable it only for an isolated local demo because it exposes one-click accounts for every role.
 
 3. **Start the database, API, and face-service:**
    ```
@@ -54,17 +54,10 @@ The system has three services:
 5. **Verify it's up:**
    - `curl http://localhost:8000/health` (or open it in a browser) should return a healthy JSON response.
    - `curl http://localhost:8001/health` likewise for face-service.
-   - Open `http://127.0.0.1:3000` — you should see the SmartAttend login screen. With `DEMO_MODE=true`, there are one-click demo logins for admin/lecturer/student roles right on that screen.
+   - Open `http://127.0.0.1:3000` — you should see the SmartAttend login screen. One-click demo logins appear only when you have explicitly set `DEMO_MODE=true`.
 
-### A gap to know about in this path
-`docker-compose.yml` only mounts `database/001_initial.sql` into Postgres's auto-init directory. The later migrations (`002_attendance_attempts.sql` through `005_pending_students.sql`) are **not** applied automatically on a fresh Docker volume — you need to run them yourself once the `db` container is up:
-```
-docker compose exec -T db psql -U smart_attend -d smart_attend < database/002_attendance_attempts.sql
-docker compose exec -T db psql -U smart_attend -d smart_attend < database/003_refresh_tokens.sql
-docker compose exec -T db psql -U smart_attend -d smart_attend < database/004_class_schedules.sql
-docker compose exec -T db psql -U smart_attend -d smart_attend < database/005_pending_students.sql
-```
-(Run these once, right after first startup, before using the app — features touching schedules, self-registration, or refresh-token revocation will fail with database errors otherwise.)
+### Database initialization
+`docker-compose.yml` mounts the complete `database/` directory into Postgres's initialization directory. A fresh Docker volume therefore applies `001` through `005` in filename order. Existing database volumes are intentionally not modified by Docker initialization; apply any new numbered migration once against those environments before deploying code that needs it.
 
 ---
 
@@ -137,7 +130,7 @@ Two separate Python services means **two separate virtual environments** — `ap
 
 7. **Verify:**
    - `http://localhost:8000/health` and `http://localhost:8001/health` both respond.
-   - `http://127.0.0.1:3000` loads the login screen; demo logins work if `DEMO_MODE=true`.
+   - `http://127.0.0.1:3000` loads the login screen; demo logins appear only if you explicitly set `DEMO_MODE=true`.
    - Run the test suite to confirm the `api` install is sound:
      ```
      cd api
@@ -175,7 +168,7 @@ VITE_API_URL = https://smartattend-api.onrender.com
 
 ### Two things worth knowing about this path
 - **Render's free tier spins services down after inactivity** and takes tens of seconds to wake back up on the next request. `QR_TTL_SECONDS` defaults to 30 — a cold-started `api` can plausibly take longer than that to respond to the very first request after idle, which would show up as an expired/failed QR check-in on that first attempt. If you're demoing live, hit the site once a minute or two before you actually need it to "wake" the services first; a paid Render plan removes this entirely.
-- `render.yaml` sets `DEMO_MODE=true` so the one-click demo logins (admin/lecturer/student) work out of the box — this is what answers "I don't have any credentials to log in with." Per [README.md](README.md) and [PRIVACY.md](PRIVACY.md), turn this off (`DEMO_MODE=false`, along with real rotated secrets) before this is ever shown to real students.
+- `render.yaml` sets `DEMO_MODE=false`. Create the first administrator through `/auth/bootstrap`, then use that account to create the remaining accounts. Only enable demo mode temporarily in an isolated demonstration environment.
 
 ---
 
@@ -192,7 +185,7 @@ All of these are read by `api` (from `api/.env`, or the container environment in
 | `FACE_SERVICE_URL` | Where `api` reaches `face-service` | `http://face-service:8001` in Docker, `http://127.0.0.1:8001` natively. |
 | `ALLOWED_ORIGINS` | CORS allow-list | Must exactly match the origin the frontend is actually served from, protocol and host included. |
 | `JWT_SECRET` | Signs access/refresh tokens | Same "must change before real use" enforcement as `QR_SIGNING_SECRET`. |
-| `DEMO_MODE` | Enables one-click demo logins on the login screen | `true` for local dev, **must be `false`** before this is shown to real users. |
+| `DEMO_MODE` | Enables one-click demo logins on the login screen | Defaults to `false`; enable only for an isolated local demo. |
 | `TIMEZONE` | Used for scheduling/attendance-window calculations | Default `Africa/Lagos`. |
 
 `face-service` reads two more, directly from the process environment (no `.env` file):
@@ -207,6 +200,10 @@ All of these are read by `api` (from `api/.env`, or the container environment in
 
 ## Troubleshooting
 
+### Windows Application Control blocks Python DLLs
+
+If Python reports `DLL load failed while importing pyexpat`, `unicodedata`, or a similar standard-library extension, the machine's Application Control policy has blocked a CPython DLL. Recreating the virtual environment or changing Python versions will not fix that policy. Ask the device administrator to allow the Python installation and its standard-library DLLs, then recreate both service environments with Python 3.12. Until then, use GitHub Actions for the automated checks; the repository workflow runs the API, face-service, and frontend build on a clean Python 3.12/Linux runner.
+
 Issues actually hit while building this project, in case you hit the same ones:
 
 - **"No Python found" / wrong Python version picked up.** Confirm `uv python list` shows a 3.12 install, and that you ran `uv venv --python 3.12` (not a bare `uv venv`, which may pick whatever's on PATH). A stray Python 3.13/3.14 install on PATH is the most common cause of dependency install failures here.
@@ -215,7 +212,7 @@ Issues actually hit while building this project, in case you hit the same ones:
 - **`uv run pytest` does nothing / gets silently blocked (Windows only).** A Windows "Application Control" policy can block `pytest.exe`'s entrypoint specifically. Use `.venv/Scripts/python.exe -m pytest` instead — routes around the same block by invoking pytest as a module rather than an executable.
 - **Frontend requests fail with CORS errors in the browser console.** Almost always an origin mismatch — check that the URL you're loading the frontend from (`http://127.0.0.1:3000` vs `http://localhost:3000`) exactly matches an entry in `ALLOWED_ORIGINS`. They are different origins to a browser even though they point at the same machine.
 - **First enroll/check-in request is very slow, then fast after that.** Expected — `face-service` downloads its two ONNX model files from GitHub on first use and caches them locally. Make sure the machine has outbound internet access for that first call; after that, it's fully local.
-- **Self-registration/scheduling endpoints error out on a fresh Docker Compose setup.** You likely haven't applied the `002`–`005` migration files — see the callout in the Docker Compose section above; only `001_initial.sql` runs automatically.
+- **Self-registration/scheduling endpoints error out after updating an existing Docker database.** Apply the newly added numbered migration files to that existing database, then restart the API. Fresh Docker volumes already receive all migrations automatically.
 - **A previously-enrolled account's face check always fails after pulling a newer version of this repo.** If the face-verification pipeline changed (embedding model, embedding dimensions), old enrollments are invalidated by design — the stored biometric template doesn't match what the new pipeline computes for the same face. Re-enroll the affected account.
 
 ---

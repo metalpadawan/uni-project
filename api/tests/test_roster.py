@@ -1,12 +1,13 @@
 from datetime import timedelta
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 from app.auth import hash_password
 from app.database import Base
-from app.main import admin_overview, lecturer_roster, list_students, my_attendance
+from app.main import add_course_enrollment, admin_overview, lecturer_roster, list_course_enrollments, list_students, my_attendance, remove_course_enrollment
 from app.models import (
     AttendanceAttempt,
     AttendanceRecord,
@@ -23,6 +24,7 @@ from app.models import (
     UserRole,
 )
 from app.security import utcnow
+from app.schemas import CourseEnrollmentCreate
 
 
 @pytest.fixture
@@ -126,3 +128,43 @@ def test_admin_overview_counts(db):
     assert overview.registered_students == 1
     assert overview.active_courses == 1
     assert overview.pending_registrations == 1
+
+
+def test_course_enrollment_can_be_managed_by_course_owner_or_admin(db):
+    admin = make_user(db, UserRole.admin, "admin@example.test")
+    lecturer = make_user(db, UserRole.lecturer, "lecturer@example.test")
+    _, student = make_student(db, "student@example.test", "21/CSC/001")
+    course = Course(code="CSC 421", title="AI", lecturer_id=lecturer.id)
+    db.add(course)
+    db.commit()
+
+    enrolled = add_course_enrollment(
+        course.id,
+        CourseEnrollmentCreate(matric_no=student.matric_no),
+        db,
+        admin,
+    )
+
+    assert enrolled.student_id == student.id
+    assert [row.matric_no for row in list_course_enrollments(course.id, db, lecturer)] == [student.matric_no]
+
+    with pytest.raises(HTTPException) as error:
+        add_course_enrollment(course.id, CourseEnrollmentCreate(matric_no=student.matric_no), db, lecturer)
+    assert getattr(error.value, "status_code", None) == 409
+
+    remove_course_enrollment(course.id, student.id, db, lecturer)
+    assert list_course_enrollments(course.id, db, admin) == []
+
+
+def test_lecturer_cannot_manage_another_lecturers_course_enrollment(db):
+    owner = make_user(db, UserRole.lecturer, "owner@example.test")
+    intruder = make_user(db, UserRole.lecturer, "intruder@example.test")
+    _, student = make_student(db, "student@example.test", "21/CSC/001")
+    course = Course(code="CSC 421", title="AI", lecturer_id=owner.id)
+    db.add(course)
+    db.commit()
+
+    with pytest.raises(HTTPException) as error:
+        add_course_enrollment(course.id, CourseEnrollmentCreate(matric_no=student.matric_no), db, intruder)
+
+    assert error.value.status_code == 404

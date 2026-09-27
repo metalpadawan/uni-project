@@ -1,16 +1,57 @@
 const API_URL = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 let accessToken = sessionStorage.getItem("smartattend_access_token") || "";
+let refreshInFlight = null;
+
+function saveSession(result) {
+  accessToken = result.access_token;
+  sessionStorage.setItem("smartattend_access_token", accessToken);
+  sessionStorage.setItem("smartattend_refresh_token", result.refresh_token);
+  sessionStorage.setItem("smartattend_user", JSON.stringify(result.user));
+  return result.user;
+}
+
+async function refreshAccessToken() {
+  const refreshToken = sessionStorage.getItem("smartattend_refresh_token");
+  if (!refreshToken) throw new Error("Your session has expired. Please sign in again.");
+  if (!refreshInFlight) {
+    refreshInFlight = fetch(`${API_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+      .then(async (response) => {
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(body.detail || "Your session has expired. Please sign in again.");
+        saveSession(body);
+      })
+      .finally(() => {
+        refreshInFlight = null;
+      });
+  }
+  return refreshInFlight;
+}
 
 async function request(path, options = {}) {
+  const { retry = false, ...fetchOptions } = options;
   const response = await fetch(`${API_URL}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers: {
       "Content-Type": "application/json",
       ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...(options.headers || {}),
+      ...(fetchOptions.headers || {}),
     },
   });
   const body = await response.json().catch(() => ({}));
+  if (response.status === 401 && !retry && path !== "/auth/login" && path !== "/auth/refresh") {
+    try {
+      await refreshAccessToken();
+      return request(path, { ...fetchOptions, retry: true });
+    } catch (error) {
+      accessToken = "";
+      ["smartattend_access_token", "smartattend_refresh_token", "smartattend_user"].forEach((key) => sessionStorage.removeItem(key));
+      throw error;
+    }
+  }
   if (!response.ok)
     throw new Error(
       body.detail || "The server could not complete this request.",
@@ -38,6 +79,14 @@ export const api = {
   sessionAttendance: (sessionId) =>
     request(`/sessions/${sessionId}/attendance`),
   listCourses: () => request("/courses"),
+  courseEnrollments: (courseId) => request(`/courses/${courseId}/enrollments`),
+  addCourseEnrollment: (courseId, matricNo) =>
+    request(`/courses/${courseId}/enrollments`, {
+      method: "POST",
+      body: JSON.stringify({ matric_no: matricNo }),
+    }),
+  removeCourseEnrollment: (courseId, studentId) =>
+    request(`/courses/${courseId}/enrollments/${studentId}`, { method: "DELETE" }),
   listStudents: () => request("/students"),
   myAttendance: () => request("/students/me/attendance"),
   roster: () => request("/roster"),
@@ -73,21 +122,14 @@ export const api = {
     const result = await request(`/auth/demo/${role.toLowerCase()}`, {
       method: "POST",
     });
-    accessToken = result.access_token;
-    sessionStorage.setItem("smartattend_access_token", accessToken);
-    sessionStorage.setItem("smartattend_user", JSON.stringify(result.user));
-    return result.user;
+    return saveSession(result);
   },
   login: async (email, password) => {
     const result = await request("/auth/login", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
-    accessToken = result.access_token;
-    sessionStorage.setItem("smartattend_access_token", accessToken);
-    sessionStorage.setItem("smartattend_refresh_token", result.refresh_token);
-    sessionStorage.setItem("smartattend_user", JSON.stringify(result.user));
-    return result.user;
+    return saveSession(result);
   },
   logout: async () => {
     const refreshToken = sessionStorage.getItem("smartattend_refresh_token");

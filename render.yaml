@@ -40,6 +40,6 @@ services:
       - key: ALLOWED_ORIGINS
         value: "https://uni-project-drab.vercel.app"
       - key: DEMO_MODE
-        value: "true"
+        value: "false"
       - key: TIMEZONE
         value: "Africa/Lagos"

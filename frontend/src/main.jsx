@@ -1307,12 +1307,91 @@ function AdminCourses() {
   return (
     <div className="course-grid">
       {courses.map((c) => (
-        <div className="panel course-card" key={c.id}>
-          <span>{c.code}</span>
-          <h3>{c.title}</h3>
-        </div>
+        <CourseEnrollmentManager course={c} key={c.id} />
       ))}
     </div>
+  );
+}
+function CourseEnrollmentManager({ course }) {
+  const [students, setStudents] = useState([]),
+    [matricNo, setMatricNo] = useState(""),
+    [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+
+  function refresh() {
+    return api.courseEnrollments(course.id).then(setStudents);
+  }
+
+  useEffect(() => {
+    refresh().catch((err) => setError(err.message));
+  }, [course.id]);
+
+  async function add(event) {
+    event.preventDefault();
+    if (!matricNo.trim()) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.addCourseEnrollment(course.id, matricNo.trim());
+      setMatricNo("");
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(studentId) {
+    setBusy(true);
+    setError("");
+    try {
+      await api.removeCourseEnrollment(course.id, studentId);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <article className="panel course-card">
+      <span>{course.code}</span>
+      <h3>{course.title}</h3>
+      <p>{students.length} enrolled student{students.length === 1 ? "" : "s"}</p>
+      <form onSubmit={add} className="course-enrollment-form">
+        <label>
+          Student matric number
+          <input
+            value={matricNo}
+            onChange={(event) => setMatricNo(event.target.value)}
+            placeholder="21/CSC/000"
+            minLength={5}
+            required
+          />
+        </label>
+        <button className="primary" disabled={busy}>
+          {busy ? "Saving…" : "Enroll student"}
+        </button>
+      </form>
+      {error && <p className="inline-error" role="alert">{error}</p>}
+      {students.length > 0 && (
+        <ul className="course-enrollment-list">
+          {students.map((student) => (
+            <li key={student.student_id}>
+              <span>
+                <b>{student.name}</b>
+                <small>{student.matric_no}</small>
+              </span>
+              <button className="remove" disabled={busy} onClick={() => remove(student.student_id)}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
   );
 }
 function PendingApprovals() {

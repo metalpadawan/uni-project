@@ -38,14 +38,14 @@ npm run dev -- --port 3000
 ## Run with Docker Compose (PostgreSQL/pgvector)
 
 ```
-docker compose up
+DEMO_MODE=true docker compose up
 ```
 
-This is the path a real deployment should use — `api`'s SQLite fallback has no place outside local development. `db`'s healthcheck gates `api`'s startup so it doesn't race Postgres's own initialization on a fresh volume.
+This starts an isolated local demo. For non-demo use, keep `DEMO_MODE=false` and supply real `JWT_SECRET` and `QR_SIGNING_SECRET` values; the API intentionally refuses placeholder secrets outside demo mode. PostgreSQL is the deployment path — `api`'s SQLite fallback has no place outside local development. `db`'s healthcheck gates `api`'s startup so it doesn't race Postgres's own initialization on a fresh volume.
 
 ## Before deploying anywhere real
 
-- **Set `DEMO_MODE=false`.** It defaults to `false` already, but `docker-compose.yml` and local dev scripts override it to `true` for convenience — make sure that override doesn't follow you to a real deployment. With it on, `POST /auth/demo/{role}` hands out a valid admin token to anyone, no credentials required.
+- **Keep `DEMO_MODE=false`.** It is the default in the example and deployment configurations. Turn it on only for an isolated local demo; with it on, `POST /auth/demo/{role}` hands out a valid admin token to anyone, no credentials required.
 - **Rotate `JWT_SECRET` and `QR_SIGNING_SECRET`** to real random values. The api refuses to start with `DEMO_MODE=false` and either secret still at its development-placeholder value, so this is enforced, not just documented — but only once demo mode is actually off.
 - **Serve over HTTPS.** `getUserMedia` (camera access, used for face check-in/enrolment) is blocked by browsers on any origin that isn't `https://` or `localhost`. This only matters once the frontend is reachable somewhere other than a developer's own machine — set up TLS termination (a reverse proxy, load balancer, or platform-provided HTTPS) in front of wherever the frontend and api actually get deployed.
 - **Re-enrol everyone** if this is following an earlier deployment that predates the server-side face-verification rewrite — face templates from the old client-side pipeline aren't compatible with the current one.

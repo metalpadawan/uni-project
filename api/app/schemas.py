@@ -21,6 +21,18 @@ class CourseOut(BaseModel):
     title: str
 
 
+class CourseEnrollmentCreate(BaseModel):
+    matric_no: str = Field(min_length=5, max_length=40)
+
+
+class CourseEnrollmentOut(BaseModel):
+    student_id: str
+    name: str
+    matric_no: str
+    department: str
+    level: int
+
+
 class ScheduleCreate(BaseModel):
     course_code: str
     course_title: str

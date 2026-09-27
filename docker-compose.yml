@@ -8,7 +8,7 @@ services:
     ports: ["5432:5432"]
     volumes:
       - smart_attend_db:/var/lib/postgresql/data
-      - ./database/001_initial.sql:/docker-entrypoint-initdb.d/001_initial.sql:ro
+      - ./database:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U smart_attend -d smart_attend"]
       interval: 3s
@@ -21,9 +21,9 @@ services:
     volumes: ["./api:/app"]
     environment:
       DATABASE_URL: postgresql+psycopg://smart_attend:${POSTGRES_PASSWORD:-local-development-only}@db:5432/smart_attend
-      QR_SIGNING_SECRET: ${QR_SIGNING_SECRET:-local-development-signing-secret-change-before-deploy}
-      JWT_SECRET: ${JWT_SECRET:-local-development-jwt-secret-change-before-deploy}
-      DEMO_MODE: ${DEMO_MODE:-true}
+      QR_SIGNING_SECRET: ${QR_SIGNING_SECRET:-development-only-change-me}
+      JWT_SECRET: ${JWT_SECRET:-development-jwt-secret-change-before-deploy}
+      DEMO_MODE: ${DEMO_MODE:-false}
       FACE_SERVICE_URL: http://face-service:8001
       ALLOWED_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
     ports: ["8000:8000"]

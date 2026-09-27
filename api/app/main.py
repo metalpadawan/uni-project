@@ -17,7 +17,7 @@ from .config import settings
 from .database import Base, engine, get_db
 from .auth import hash_password, redeem_refresh_token, require_roles, revoke_refresh_token, token_pair, verify_password
 from .models import AttendanceAttempt, AttendanceRecord, AttendanceSession, AttendanceStatus, ClassSchedule, Course, CourseEnrollment, FaceEmbedding, PendingStudent, QRToken, RegistrationStatus, SessionStatus, Student, User, UserRole
-from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseOut, LoginRequest, PendingStudentOut, QRTokenOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
+from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseEnrollmentCreate, CourseEnrollmentOut, CourseOut, LoginRequest, PendingStudentOut, QRTokenOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
 from .scheduling import sync_scheduled_sessions
 from .security import as_aware, new_qr_token, signature_is_valid, token_hash, utcnow
 
@@ -292,6 +292,59 @@ def list_courses(db: Session = Depends(get_db), user: User = Depends(require_rol
         query = query.where(Course.lecturer_id == user.id)
     courses = db.scalars(query.order_by(Course.code)).all()
     return [CourseOut(id=c.id, code=c.code, title=c.title) for c in courses]
+
+
+def managed_course(course_id: str, db: Session, user: User) -> Course:
+    course = db.get(Course, course_id)
+    if not course or (user.role == UserRole.lecturer and course.lecturer_id != user.id):
+        raise HTTPException(404, "Course was not found.")
+    return course
+
+
+@app.get("/courses/{course_id}/enrollments", response_model=list[CourseEnrollmentOut])
+def list_course_enrollments(course_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.lecturer, UserRole.admin))):
+    course = managed_course(course_id, db, user)
+    rows = db.execute(
+        select(Student, User)
+        .join(CourseEnrollment, CourseEnrollment.student_id == Student.id)
+        .join(User, Student.user_id == User.id)
+        .where(CourseEnrollment.course_id == course.id)
+        .order_by(User.name)
+    ).all()
+    return [
+        CourseEnrollmentOut(
+            student_id=student.id,
+            name=account.name,
+            matric_no=student.matric_no,
+            department=student.department,
+            level=student.level,
+        )
+        for student, account in rows
+    ]
+
+
+@app.post("/courses/{course_id}/enrollments", response_model=CourseEnrollmentOut, status_code=status.HTTP_201_CREATED)
+def add_course_enrollment(course_id: str, payload: CourseEnrollmentCreate, db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.lecturer, UserRole.admin))):
+    course = managed_course(course_id, db, user)
+    student = db.scalar(select(Student).where(Student.matric_no == payload.matric_no))
+    if not student:
+        raise HTTPException(404, "Student was not found.")
+    if db.scalar(select(CourseEnrollment).where(CourseEnrollment.course_id == course.id, CourseEnrollment.student_id == student.id)):
+        raise HTTPException(409, "This student is already enrolled in the course.")
+    db.add(CourseEnrollment(course_id=course.id, student_id=student.id))
+    db.commit()
+    account = db.get(User, student.user_id)
+    return CourseEnrollmentOut(student_id=student.id, name=account.name, matric_no=student.matric_no, department=student.department, level=student.level)
+
+
+@app.delete("/courses/{course_id}/enrollments/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_course_enrollment(course_id: str, student_id: str, db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.lecturer, UserRole.admin))):
+    course = managed_course(course_id, db, user)
+    enrollment = db.scalar(select(CourseEnrollment).where(CourseEnrollment.course_id == course.id, CourseEnrollment.student_id == student_id))
+    if not enrollment:
+        raise HTTPException(404, "Course enrollment was not found.")
+    db.delete(enrollment)
+    db.commit()
 
 
 @app.post("/schedule", response_model=ScheduleOut, status_code=status.HTTP_201_CREATED)
