@@ -39,6 +39,8 @@ services:
         value: "https://smartattend-face-service.onrender.com"
       - key: ALLOWED_ORIGINS
         value: "https://uni-project-drab.vercel.app"
+      - key: PUBLIC_FRONTEND_URL
+        value: "https://uni-project-drab.vercel.app"
       - key: DEMO_MODE
         value: "false"
       - key: TIMEZONE

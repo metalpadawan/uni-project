@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from .config import settings
@@ -21,6 +21,14 @@ def _use_psycopg3(url: str) -> str:
 database_url = _use_psycopg3(settings.database_url)
 connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
 engine = create_engine(database_url, connect_args=connect_args)
+
+# Render and the local Docker database both include pgvector. Creating the
+# extension here makes a new managed database ready before SQLAlchemy creates
+# the `vector(128)` embedding column during application startup.
+if database_url.startswith("postgresql"):
+    with engine.begin() as connection:
+        connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 
