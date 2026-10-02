@@ -259,7 +259,9 @@ function App() {
   const [records, setRecords] = useState(
     () => JSON.parse(localStorage.getItem("attendanceRecords") || "null") || [],
   );
-  const demoMode = import.meta.env.VITE_DEMO_MODE !== "false";
+  // Demo controls must be deliberately enabled. The production API rejects
+  // demo-login requests, so showing role-switch buttons there is misleading.
+  const demoMode = import.meta.env.VITE_DEMO_MODE === "true";
   useEffect(
     () => localStorage.setItem("attendanceRecords", JSON.stringify(records)),
     [records],
