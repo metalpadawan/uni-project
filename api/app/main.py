@@ -103,7 +103,11 @@ def get_face_embedding(photo: str) -> list[float]:
     """Asks face-service to detect a face in the photo and return its embedding — the server, not
     the client, decides what a submitted photo's biometric data is."""
     try:
-        response = httpx.post(f"{settings.face_service_url}/enroll", json={"photo": photo}, timeout=10.0)
+        response = httpx.post(
+            f"{settings.face_service_url}/enroll",
+            json={"photo": photo},
+            timeout=settings.face_service_timeout_seconds,
+        )
     except httpx.HTTPError:
         raise HTTPException(503, "Face verification service is unavailable. Please try again.")
     if response.status_code == 422:
@@ -530,7 +534,7 @@ def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), 
         response = httpx.post(
             f"{settings.face_service_url}/verify",
             json={"enrolled_embedding": face_template.embedding, "frame_a": payload.frame_a, "frame_b": payload.frame_b},
-            timeout=10.0,
+            timeout=settings.face_service_timeout_seconds,
         )
         face_result = response.json()
     except (httpx.HTTPError, ValueError):
