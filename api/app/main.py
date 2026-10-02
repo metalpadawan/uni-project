@@ -1,7 +1,6 @@
 import base64
 import io
 from datetime import timedelta
-from urllib.parse import urlencode
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -447,15 +446,13 @@ def rotate_qr(session_id: str, request: Request, db: Session = Depends(get_db), 
     row = QRToken(session_id=session_id, token_hash=token_hash(raw), issued_at=now, expires_at=expires_at)
     db.add(row)
     db.commit()
-    # A phone camera recognizes a URL and opens the check-in page. The token is still
-    # signed, short lived, and verified server-side before attendance is recorded.
-    frontend_url = settings.public_frontend_url.rstrip("/") or request.headers.get("origin", "").rstrip("/") or "http://127.0.0.1:5173"
-    qr_url = f"{frontend_url}/?{urlencode({'session': session_id, 'qr': raw})}"
-    qr_image = qrcode.make(qr_url)
+    # The signed token is scanned only inside a signed-in student check-in.
+    # QR possession alone can never record attendance without a live face match.
+    qr_image = qrcode.make(raw)
     buffer = io.BytesIO()
     qr_image.save(buffer, format="PNG")
     qr_data_url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
-    return QRTokenOut(token=raw, qr_url=qr_url, qr_data_url=qr_data_url, expires_at=expires_at, expires_in=settings.qr_ttl_seconds)
+    return QRTokenOut(token=raw, qr_data_url=qr_data_url, expires_at=expires_at, expires_in=settings.qr_ttl_seconds)
 
 
 @app.post("/sessions/{session_id}/close")

@@ -126,7 +126,7 @@ Two separate Python services means **two separate virtual environments** — `ap
    npm install
    npm run dev
    ```
-   Serves on `http://127.0.0.1:5173` (the development server is reachable from devices on the same Wi-Fi so a phone can open a QR check-in link).
+   Serves on `http://127.0.0.1:5173`. For phone testing on the same Wi-Fi, use the laptop's Wi-Fi address and open the signed-in student app before using its in-app QR scanner.
 
 7. **Verify:**
    - `http://localhost:8000/health` and `http://localhost:8001/health` both respond.

@@ -15,7 +15,7 @@ function tokenFromQr(value) {
   }
 }
 
-export default function SecureCheckIn({ course, busy, error, onComplete, initialToken = "" }) {
+export default function SecureCheckIn({ course, busy, error, onComplete }) {
   const [stage, setStage] = useState("face");
   const {
     videoRef: faceVideo,
@@ -28,7 +28,7 @@ export default function SecureCheckIn({ course, busy, error, onComplete, initial
     stream = useRef(null),
     animation = useRef(null);
   const [qrMessage, setQrMessage] = useState("");
-  const [token, setToken] = useState(initialToken);
+  const [token, setToken] = useState("");
 
   useEffect(
     () => () => {

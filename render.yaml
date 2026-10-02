@@ -32,7 +32,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: QR_TTL_SECONDS
-        value: "30"
+        value: "15"
       - key: FACE_DISTANCE_THRESHOLD
         value: "1.128"
       - key: FACE_SERVICE_URL

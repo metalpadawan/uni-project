@@ -7,7 +7,7 @@ DEV_DEFAULT_QR_SIGNING_SECRET = "development-only-change-me"
 class Settings(BaseSettings):
     database_url: str = "sqlite:///./smart_attendance.db"
     qr_signing_secret: str = DEV_DEFAULT_QR_SIGNING_SECRET
-    qr_ttl_seconds: int = 30
+    qr_ttl_seconds: int = 15
     face_distance_threshold: float = 1.128
     face_service_url: str = "http://127.0.0.1:8001"
     public_frontend_url: str = ""

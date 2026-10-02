@@ -52,7 +52,6 @@ class ScheduleOut(BaseModel):
 
 class QRTokenOut(BaseModel):
     token: str
-    qr_url: str
     qr_data_url: str
     expires_at: datetime
     expires_in: int

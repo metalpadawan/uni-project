@@ -39,7 +39,7 @@ Use this as the final handoff guide. Steps marked **You** require your accounts,
 1. **You:** Run `ipconfig` and copy the laptop's **IPv4 Address** for the Wi-Fi adapter, for example `192.168.1.25`.
 2. **You:** In the root `.env`, set `PUBLIC_FRONTEND_URL=http://192.168.1.25:5173` and append that same URL to `ALLOWED_ORIGINS`.
 3. **You:** Create `frontend/.env.local` with `VITE_API_URL=http://192.168.1.25:8000`, then restart Docker Compose and Vite. Allow Windows Firewall access on private networks if asked.
-4. **You:** Scan a newly refreshed QR code. It opens the student check-in link, preloads the short-lived QR token, and still requires student sign-in and live face verification.
+4. **You:** Sign in as the student, select the open class, and use the in-app QR scanner after live face capture. The QR contains a short-lived signed token, not a website link; both checks are required before attendance is recorded.
 
 ## 3. Configure first real users
 
