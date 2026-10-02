@@ -39,6 +39,10 @@ services:
         value: "https://smartattend-face-service.onrender.com"
       - key: ALLOWED_ORIGINS
         value: "https://uni-project-drab.vercel.app"
+      # Vercel deployment URLs include a changing suffix. This still permits
+      # only deployments from this project/team, rather than arbitrary sites.
+      - key: ALLOWED_ORIGIN_REGEX
+        value: '^https://uni-project-[a-z0-9-]+-metalpadawans-projects\.vercel\.app$'
       - key: PUBLIC_FRONTEND_URL
         value: "https://uni-project-drab.vercel.app"
       - key: DEMO_MODE

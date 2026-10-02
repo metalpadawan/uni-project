@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     face_service_url: str = "http://127.0.0.1:8001"
     public_frontend_url: str = ""
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
+    allowed_origin_regex: str = ""
     jwt_secret: str = DEV_DEFAULT_JWT_SECRET
     access_token_minutes: int = 15
     refresh_token_days: int = 7

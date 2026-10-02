@@ -33,14 +33,19 @@ async function refreshAccessToken() {
 
 async function request(path, options = {}) {
   const { retry = false, ...fetchOptions } = options;
-  const response = await fetch(`${API_URL}${path}`, {
-    ...fetchOptions,
-    headers: {
-      "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...(fetchOptions.headers || {}),
-    },
-  });
+  let response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...fetchOptions,
+      headers: {
+        "Content-Type": "application/json",
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        ...(fetchOptions.headers || {}),
+      },
+    });
+  } catch {
+    throw new Error(`Cannot reach the attendance API at ${API_URL}. Check the Vercel VITE_API_URL setting and the Render CORS origin.`);
+  }
   const body = await response.json().catch(() => ({}));
   if (response.status === 401 && !retry && path !== "/auth/login" && path !== "/auth/refresh") {
     try {
