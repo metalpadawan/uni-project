@@ -1052,7 +1052,7 @@ function PortalView({
             <div className="workspace-head">
               <div>
                 <h2>Open attendance sessions</h2>
-                <p>Live courses appear here. Enrolment is required before check-in.</p>
+                <p>Choose your live class. Your signed-in student profile is used automatically.</p>
               </div>
             </div>
             {sessionsBusy ? (
@@ -1079,16 +1079,10 @@ function PortalView({
                         minute: "2-digit",
                       })}
                     </p>
-                    {item.enrolled ? (
-                      <button className="primary" onClick={() => onStart(item)}>
-                        <ScanFace size={17} />
-                        Start secure check-in
-                      </button>
-                    ) : (
-                      <div className="course-access-note">
-                        Your lecturer must enrol your matric number in this course before you can check in.
-                      </div>
-                    )}
+                    <button className="primary" onClick={() => onStart(item)}>
+                      <ScanFace size={17} />
+                      Start secure check-in
+                    </button>
                   </article>
                 ))}
               </div>

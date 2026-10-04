@@ -11,7 +11,7 @@ import qrcode
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from sqlalchemy import and_, func, select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -579,15 +579,8 @@ def list_open_sessions(db: Session = Depends(get_db), user: User = Depends(requi
         raise HTTPException(404, "Student profile was not found.")
     now = utcnow()
     rows = db.execute(
-        select(AttendanceSession, Course, CourseEnrollment.id)
+        select(AttendanceSession, Course)
         .join(Course, AttendanceSession.course_id == Course.id)
-        .outerjoin(
-            CourseEnrollment,
-            and_(
-                CourseEnrollment.course_id == Course.id,
-                CourseEnrollment.student_id == student.id,
-            ),
-        )
         .where(
             AttendanceSession.status == SessionStatus.open,
             AttendanceSession.started_at <= now,
@@ -602,9 +595,8 @@ def list_open_sessions(db: Session = Depends(get_db), user: User = Depends(requi
             "course_title": course.title,
             "starts_at": session.started_at,
             "ends_at": session.ends_at,
-            "enrolled": enrollment_id is not None,
         }
-        for session, course, enrollment_id in rows
+        for session, course in rows
     ]
 
 
@@ -717,9 +709,7 @@ def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), 
     if not session or session.status != SessionStatus.open or as_aware(session.started_at) > now or as_aware(session.ends_at) <= now:
         raise HTTPException(409, "Attendance session is not open.")
     if not student:
-        raise HTTPException(404, "Student is not enrolled.")
-    if not db.scalar(select(CourseEnrollment).where(CourseEnrollment.course_id == session.course_id, CourseEnrollment.student_id == student.id)):
-        raise HTTPException(403, "You are not enrolled in the course for this attendance session.")
+        raise HTTPException(404, "Student profile was not found.")
     qr_valid = bool(qr and signature_is_valid(payload.qr_token) and as_aware(qr.expires_at) >= now)
     if not qr_valid:
         raise HTTPException(422, "QR expired or invalid. Ask the lecturer to refresh it.")
@@ -778,6 +768,16 @@ def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), 
         marked_at=now,
         attendance_id=record.id,
     )
+    # The authenticated student's profile supplies the course membership. It
+    # is saved only after the QR and face checks have both passed, so a student
+    # never needs to type a matriculation number to access a live session.
+    if not db.scalar(
+        select(CourseEnrollment).where(
+            CourseEnrollment.course_id == session.course_id,
+            CourseEnrollment.student_id == student.id,
+        )
+    ):
+        db.add(CourseEnrollment(course_id=session.course_id, student_id=student.id))
     db.add(record)
     try:
         db.commit()
