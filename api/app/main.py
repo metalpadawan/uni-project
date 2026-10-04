@@ -9,7 +9,7 @@ import qrcode
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -23,7 +23,15 @@ from .security import as_aware, new_qr_token, signature_is_valid, token_hash, ut
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="SmartAttend API", version="0.1.0")
-limiter = Limiter(key_func=get_remote_address)
+def client_address(request: Request) -> str:
+    """Use the original client IP when Render sits in front of the API."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip()
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=client_address, storage_uri=settings.rate_limit_storage_uri)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(
@@ -39,6 +47,17 @@ def health():
     return {"status": "ok", "core": "face+qr"}
 
 
+@app.get("/health/ready")
+def readiness():
+    """Only report ready when this API instance can serve database-backed work."""
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except Exception:
+        raise HTTPException(503, "Database is unavailable.")
+    return {"status": "ok", "database": "ready"}
+
+
 @app.post("/auth/bootstrap", status_code=status.HTTP_201_CREATED)
 def bootstrap_admin(payload: RegisterRequest, db: Session = Depends(get_db)):
     if db.scalar(select(User.id).limit(1)):
@@ -49,7 +68,7 @@ def bootstrap_admin(payload: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @app.post("/auth/login")
-@limiter.limit("5/minute")
+@limiter.limit(settings.login_rate_limit)
 def login(request: Request, payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == payload.email.lower()))
     if not user or not verify_password(payload.password, user.password_hash):
@@ -511,7 +530,7 @@ def session_attendance(session_id: str, db: Session = Depends(get_db), lecturer:
 
 
 @app.post("/attendance/checkin", response_model=CheckInOut, status_code=status.HTTP_201_CREATED)
-@limiter.limit("5/minute")
+@limiter.limit(settings.checkin_rate_limit)
 def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.student))):
     now = utcnow()
     session = db.get(AttendanceSession, payload.session_id)

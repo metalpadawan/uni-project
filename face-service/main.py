@@ -1,5 +1,6 @@
 import base64
 import os
+import threading
 import urllib.request
 from pathlib import Path
 
@@ -37,6 +38,9 @@ ensure_model(SFACE_PATH, SFACE_URL)
 
 detector = cv2.FaceDetectorYN_create(str(YUNET_PATH), "", (320, 320), score_threshold=0.6)
 recognizer = cv2.FaceRecognizerSF_create(str(SFACE_PATH), "")
+# OpenCV's detector mutates its input size. Serialise inference per worker so
+# simultaneous requests cannot change detector state underneath one another.
+vision_lock = threading.Lock()
 
 
 def decode_image(data: str) -> np.ndarray:
@@ -61,11 +65,12 @@ def detect_largest_face(image: np.ndarray):
 
 
 def embed(image: np.ndarray) -> np.ndarray | None:
-    face = detect_largest_face(image)
-    if face is None:
-        return None
-    aligned = recognizer.alignCrop(image, face)
-    return recognizer.feature(aligned)
+    with vision_lock:
+        face = detect_largest_face(image)
+        if face is None:
+            return None
+        aligned = recognizer.alignCrop(image, face)
+        return recognizer.feature(aligned)
 
 
 class EnrollRequest(BaseModel):
@@ -114,19 +119,21 @@ def verify(payload: VerifyRequest):
     except ValueError:
         raise HTTPException(422, "One of the submitted frames could not be read.")
 
-    embedding_a = embed(image_a)
-    embedding_b = embed(image_b)
-    if embedding_a is None or embedding_b is None:
-        return VerifyResponse(matched=False, live=False, distance=999.0, score=0.0)
+    with vision_lock:
+        face_a = detect_largest_face(image_a)
+        face_b = detect_largest_face(image_b)
+        if face_a is None or face_b is None:
+            return VerifyResponse(matched=False, live=False, distance=999.0, score=0.0)
+        embedding_a = recognizer.feature(recognizer.alignCrop(image_a, face_a))
+        embedding_b = recognizer.feature(recognizer.alignCrop(image_b, face_b))
+        enrolled = np.array(payload.enrolled_embedding, dtype=np.float32).reshape(1, -1)
+        distance_a = float(recognizer.match(enrolled, embedding_a, cv2.FaceRecognizerSF_FR_NORM_L2))
+        distance_b = float(recognizer.match(enrolled, embedding_b, cv2.FaceRecognizerSF_FR_NORM_L2))
 
     resized_a = cv2.resize(image_a, (160, 160))
     resized_b = cv2.resize(image_b, (160, 160))
     frame_difference = float(np.mean(cv2.absdiff(resized_a, resized_b)))
     live = frame_difference >= MIN_FRAME_DIFFERENCE
-
-    enrolled = np.array(payload.enrolled_embedding, dtype=np.float32).reshape(1, -1)
-    distance_a = float(recognizer.match(enrolled, embedding_a, cv2.FaceRecognizerSF_FR_NORM_L2))
-    distance_b = float(recognizer.match(enrolled, embedding_b, cv2.FaceRecognizerSF_FR_NORM_L2))
     distance = max(distance_a, distance_b)  # both frames must match, not just the easier one
     matched = live and distance < THRESHOLD
     score = max(0.0, 1 - distance / THRESHOLD)
