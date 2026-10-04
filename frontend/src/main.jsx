@@ -1738,7 +1738,8 @@ function LecturerSchedule() {
 
   async function submit(e) {
     e.preventDefault();
-    const f = new FormData(e.currentTarget);
+    const form = e.currentTarget;
+    const f = new FormData(form);
     setBusy(true);
     setError("");
     try {
@@ -1749,7 +1750,7 @@ function LecturerSchedule() {
         start_time: f.get("start_time"),
         duration_minutes: Number(f.get("duration_minutes")),
       });
-      e.currentTarget.reset();
+      form.reset();
       await refresh();
     } catch (err) {
       setError(err.message);
