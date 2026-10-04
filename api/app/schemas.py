@@ -71,8 +71,6 @@ class StudentEnroll(BaseModel):
     matric_no: str = Field(min_length=5, max_length=40)
     department: str = Field(default="Computer Science", min_length=2, max_length=160)
     level: int = Field(default=400, ge=100, le=900)
-    photo: str
-    biometric_consent: bool
 
 
 class StudentRegisterRequest(BaseModel):
@@ -82,8 +80,6 @@ class StudentRegisterRequest(BaseModel):
     matric_no: str = Field(min_length=5, max_length=40)
     department: str = Field(default="Computer Science", min_length=2, max_length=160)
     level: int = Field(default=400, ge=100, le=900)
-    photo: str
-    biometric_consent: bool
 
 
 class PendingStudentOut(BaseModel):

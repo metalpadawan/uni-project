@@ -28,6 +28,15 @@ engine = create_engine(database_url, connect_args=connect_args)
 if database_url.startswith("postgresql"):
     with engine.begin() as connection:
         connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # Earlier deployments required a biometric template at registration.
+        # This is safe to repeat and lets existing databases accept account
+        # creation before a student is enrolled for face verification.
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS pending_students "
+                "ALTER COLUMN face_embedding DROP NOT NULL"
+            )
+        )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 

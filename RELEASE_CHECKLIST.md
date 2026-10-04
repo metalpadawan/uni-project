@@ -46,7 +46,7 @@ Use this as the final handoff guide. Steps marked **You** require your accounts,
 1. **You:** With `DEMO_MODE=false`, bootstrap the first administrator once using the `POST /auth/bootstrap` endpoint in the API docs at `http://localhost:8000/docs` (or your deployed API `/docs`).
 2. **You:** Sign in as that administrator and approve student registrations, create lecturer accounts, create courses, and assign each course's lecturer.
 3. **You:** Open each course and add enrolled students by matriculation number using the new enrolment manager.
-4. **You:** Sign in as a lecturer, create a schedule/session, display its QR code, and test a student check-in with the student’s enrolled face.
+4. **You:** Sign in as a lecturer, create a schedule/session, display its QR code, and test a student check-in. Face-and-QR attendance still requires the student to have a stored face template.
 
 ## 4. Deploy for your assessment/demo
 

@@ -4,11 +4,11 @@ function stopStream(stream) {
   stream?.getTracks().forEach((track) => track.stop());
 }
 
-// Shared front-camera capture used by check-in (two frames, a beat apart) and
-// enrollment/registration (one photo). All face detection and recognition now
-// happens server-side (face-service) — this hook only owns the camera, a short
-// countdown, and grabbing JPEG frame(s) off the <video> via a <canvas>. No
-// client-side ML inference happens here at all.
+// Shared front-camera capture used by attendance check-in (two frames, a beat
+// apart). All face detection and recognition happens server-side
+// (face-service); this hook only owns the camera, a short countdown, and
+// grabbing JPEG frames off the <video> via a <canvas>. No client-side ML
+// inference happens here at all.
 export function useFaceCapture(enabled = true, { frames = 1, gapMs = 1200 } = {}) {
   const video = useRef(null),
     stream = useRef(null),

@@ -98,26 +98,7 @@ def demo_login(request: Request, role: UserRole, db: Session = Depends(get_db)):
     return token_pair(user, db)
 
 
-def get_face_embedding(photo: str) -> list[float]:
-    """Asks face-service to detect a face in the photo and return its embedding — the server, not
-    the client, decides what a submitted photo's biometric data is."""
-    try:
-        response = httpx.post(
-            f"{settings.face_service_url}/enroll",
-            json={"photo": photo},
-            timeout=settings.face_service_timeout_seconds,
-        )
-    except httpx.HTTPError:
-        raise HTTPException(503, "Face verification service is unavailable. Please try again.")
-    if response.status_code == 422:
-        detail = response.json().get("detail") if response.content else None
-        raise HTTPException(422, detail or "No face was detected in the photo. Center your face and try again.")
-    if not response.is_success:
-        raise HTTPException(503, "Face verification service is unavailable. Please try again.")
-    return response.json()["embedding"]
-
-
-def create_student_account(db: Session, *, name: str, email: str, password_hash: str, matric_no: str, department: str, level: int, embedding: list[float]) -> Student:
+def create_student_account(db: Session, *, name: str, email: str, password_hash: str, matric_no: str, department: str, level: int, embedding: list[float] | None = None) -> Student:
     if db.scalar(select(Student).where(Student.matric_no == matric_no)):
         raise HTTPException(409, "A student with this matric number already exists.")
     if db.scalar(select(User).where(User.email == email)):
@@ -126,15 +107,13 @@ def create_student_account(db: Session, *, name: str, email: str, password_hash:
     db.add(user); db.flush()
     student = Student(user_id=user.id, matric_no=matric_no, department=department, level=level)
     db.add(student); db.flush()
-    db.add(FaceEmbedding(student_id=student.id, embedding=embedding, enrolled_at=utcnow()))
+    if embedding is not None:
+        db.add(FaceEmbedding(student_id=student.id, embedding=embedding, enrolled_at=utcnow()))
     return student
 
 
 @app.post("/students", status_code=status.HTTP_201_CREATED)
 def enroll_student(payload: StudentEnroll, db: Session = Depends(get_db), _: User = Depends(require_roles(UserRole.admin))):
-    if not payload.biometric_consent:
-        raise HTTPException(422, "Explicit biometric consent is required before face enrolment.")
-    embedding = get_face_embedding(payload.photo)
     student = create_student_account(
         db,
         name=payload.name,
@@ -143,23 +122,19 @@ def enroll_student(payload: StudentEnroll, db: Session = Depends(get_db), _: Use
         matric_no=payload.matric_no,
         department=payload.department,
         level=payload.level,
-        embedding=embedding,
     )
     db.commit()
-    return {"id": student.id, "name": payload.name, "matric_no": student.matric_no, "face_enrolled": True}
+    return {"id": student.id, "name": payload.name, "matric_no": student.matric_no, "face_enrolled": False}
 
 
 @app.post("/auth/register-student", status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 def register_student(request: Request, payload: StudentRegisterRequest, db: Session = Depends(get_db)):
-    if not payload.biometric_consent:
-        raise HTTPException(422, "Explicit biometric consent is required before face enrolment.")
     email = payload.email.lower()
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(409, "An account with this email already exists.")
     if db.scalar(select(PendingStudent).where(PendingStudent.email == email, PendingStudent.status == RegistrationStatus.pending)):
         raise HTTPException(409, "A registration request for this email is already pending review.")
-    embedding = get_face_embedding(payload.photo)
     request_row = PendingStudent(
         name=payload.name,
         email=email,
@@ -167,8 +142,8 @@ def register_student(request: Request, payload: StudentRegisterRequest, db: Sess
         matric_no=payload.matric_no,
         department=payload.department,
         level=payload.level,
-        face_embedding=embedding,
-        biometric_consent=payload.biometric_consent,
+        face_embedding=None,
+        biometric_consent=False,
         status=RegistrationStatus.pending,
         requested_at=utcnow(),
     )
@@ -202,7 +177,7 @@ def approve_pending_student(request_id: str, db: Session = Depends(get_db), admi
     pending.reviewed_at = utcnow()
     pending.reviewed_by = admin.id
     db.commit()
-    return {"id": student.id, "name": pending.name, "matric_no": student.matric_no, "face_enrolled": True}
+    return {"id": student.id, "name": pending.name, "matric_no": student.matric_no, "face_enrolled": pending.face_embedding is not None}
 
 
 @app.post("/students/pending/{request_id}/reject")

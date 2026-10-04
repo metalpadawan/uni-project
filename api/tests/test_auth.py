@@ -181,7 +181,7 @@ def test_require_roles_allows_matching_role_and_blocks_others(db):
     assert error.value.status_code == 403
 
 
-def test_enroll_student_requires_biometric_consent(db):
+def test_enroll_student_creates_an_account_without_face_enrolment(db):
     admin = make_user(db, UserRole.admin, "admin@example.test")
     db.commit()
     payload = StudentEnroll(
@@ -189,14 +189,13 @@ def test_enroll_student_requires_biometric_consent(db):
         email="new.student@example.test",
         temporary_password="password123",
         matric_no="21/CSC/900",
-        photo="dummy-photo",
-        biometric_consent=False,
     )
 
-    with pytest.raises(HTTPException) as error:
-        enroll_student(payload, db, admin)
+    created = enroll_student(payload, db, admin)
 
-    assert error.value.status_code == 422
+    assert created["face_enrolled"] is False
+    logged_in = login.__wrapped__(None, LoginRequest(email="new.student@example.test", password="password123"), db)
+    assert logged_in["user"]["role"] == "student"
 
 
 def test_close_session_rejects_non_owning_lecturer(db):

@@ -111,7 +111,7 @@ class PendingStudent(Base):
     matric_no: Mapped[str] = mapped_column(String(40))
     department: Mapped[str] = mapped_column(String(160))
     level: Mapped[int]
-    face_embedding: Mapped[list[float]] = mapped_column(EmbeddingType())
+    face_embedding: Mapped[list[float] | None] = mapped_column(EmbeddingType(), nullable=True)
     biometric_consent: Mapped[bool]
     status: Mapped[RegistrationStatus] = mapped_column(Enum(RegistrationStatus), default=RegistrationStatus.pending)
     requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

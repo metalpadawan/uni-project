@@ -1,15 +1,11 @@
 import { useState } from "react";
-import { Camera, Check } from "lucide-react";
-import { useFaceCapture } from "./useFaceCapture";
+import { Check } from "lucide-react";
 import { api } from "./api";
 
 export default function StudentRegister({ onDone }) {
-  const [consent, setConsent] = useState(false);
-  const { videoRef, captured, message, capturing, capture } = useFaceCapture(consent);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [submitted, setSubmitted] = useState(false);
-  const photoReady = captured.length === 1;
 
   async function submit(e) {
     e.preventDefault();
@@ -24,8 +20,6 @@ export default function StudentRegister({ onDone }) {
         matric_no: f.get("matric_no").trim(),
         department: f.get("department").trim(),
         level: Number(f.get("level")),
-        photo: captured[0],
-        biometric_consent: consent,
       });
       setSubmitted(true);
     } catch (err) {
@@ -43,8 +37,8 @@ export default function StudentRegister({ onDone }) {
         </span>
         <h2>Registration submitted</h2>
         <p>
-          An admin will review your details and face template. You'll be able
-          to sign in once your account is approved.
+          An admin will review your details. You'll be able to sign in once
+          your account is approved.
         </p>
         <button className="primary" onClick={onDone}>
           Back to sign in
@@ -97,51 +91,6 @@ export default function StudentRegister({ onDone }) {
           required
         />
       </label>
-      <label
-        style={{
-          gridColumn: "1 / -1",
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          fontWeight: 400,
-        }}
-      >
-        <input
-          type="checkbox"
-          checked={consent}
-          onChange={(e) => setConsent(e.target.checked)}
-          style={{ width: "auto", height: "auto" }}
-        />
-        I consent to storing a biometric face template for attendance
-        verification.
-      </label>
-      {consent && (
-        <div style={{ gridColumn: "1 / -1" }}>
-          <div className="camera-frame" style={{ maxWidth: 360 }}>
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              aria-label="Face capture preview"
-            />
-            <div className="face-guide" />
-          </div>
-          <p className="capture-message" role="status">
-            {message}
-          </p>
-          {!photoReady && (
-            <button
-              type="button"
-              className="outline"
-              disabled={capturing}
-              onClick={capture}
-            >
-              {capturing ? "Capturing…" : "Capture photo"} <Camera size={15} />
-            </button>
-          )}
-        </div>
-      )}
       {error && (
         <p className="inline-error" role="alert">
           {error}
@@ -149,14 +98,10 @@ export default function StudentRegister({ onDone }) {
       )}
       <button
         className="primary"
-        disabled={busy || !consent || !photoReady}
+        disabled={busy}
         style={{ gridColumn: "1 / -1" }}
       >
-        {busy
-          ? "Submitting…"
-          : consent && !photoReady
-            ? "Capture a photo first"
-            : "Submit for review"}
+        {busy ? "Submitting…" : "Submit for review"}
       </button>
     </form>
   );

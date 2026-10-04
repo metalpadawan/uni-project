@@ -98,8 +98,8 @@ function LoginScreen({ onLogin, demoMode }) {
             </span>
             <h2>Student registration</h2>
             <p>
-              Submit your details and a face capture. An admin reviews every
-              request before your account can sign in.
+              Submit your details. An admin reviews every request before your
+              account can sign in.
             </p>
             <React.Suspense fallback={<p>Loading…</p>}>
               <StudentRegister onDone={() => setMode("login")} />
@@ -1063,7 +1063,7 @@ function PortalView({
           <React.Suspense
             fallback={
               <div className="panel" style={{ padding: 24, marginTop: 20 }}>
-                Loading face enrolment…
+                Loading student enrolment…
               </div>
             }
           >
