@@ -1344,6 +1344,16 @@ footer {
   font-weight: 600;
 }
 
+.course-access-note {
+  margin-top: 14px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  background: var(--wash);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .notice {
   display: flex;
   align-items: center;

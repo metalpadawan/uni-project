@@ -11,7 +11,7 @@ import qrcode
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -579,18 +579,33 @@ def list_open_sessions(db: Session = Depends(get_db), user: User = Depends(requi
         raise HTTPException(404, "Student profile was not found.")
     now = utcnow()
     rows = db.execute(
-        select(AttendanceSession, Course)
+        select(AttendanceSession, Course, CourseEnrollment.id)
         .join(Course, AttendanceSession.course_id == Course.id)
-        .join(CourseEnrollment, CourseEnrollment.course_id == Course.id)
+        .outerjoin(
+            CourseEnrollment,
+            and_(
+                CourseEnrollment.course_id == Course.id,
+                CourseEnrollment.student_id == student.id,
+            ),
+        )
         .where(
-            CourseEnrollment.student_id == student.id,
             AttendanceSession.status == SessionStatus.open,
             AttendanceSession.started_at <= now,
             AttendanceSession.ends_at > now,
         )
         .order_by(AttendanceSession.ends_at)
     ).all()
-    return [{"session_id": session.id, "course_code": course.code, "course_title": course.title, "starts_at": session.started_at, "ends_at": session.ends_at} for session, course in rows]
+    return [
+        {
+            "session_id": session.id,
+            "course_code": course.code,
+            "course_title": course.title,
+            "starts_at": session.started_at,
+            "ends_at": session.ends_at,
+            "enrolled": enrollment_id is not None,
+        }
+        for session, course, enrollment_id in rows
+    ]
 
 
 @app.post("/sessions/{session_id}/qr", response_model=QRTokenOut)

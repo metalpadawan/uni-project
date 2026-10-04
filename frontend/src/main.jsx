@@ -250,6 +250,7 @@ function App() {
   const [qr, setQr] = useState(null);
   const [openSessions, setOpenSessions] = useState([]);
   const [sessionsBusy, setSessionsBusy] = useState(false);
+  const [sessionsError, setSessionsError] = useState("");
   const [notifications, setNotifications] = useState([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [records, setRecords] = useState(
@@ -284,10 +285,13 @@ function App() {
       return api
         .openSessions()
       .then((rows) => {
-        if (active) setOpenSessions(rows);
+        if (active) {
+          setOpenSessions(rows);
+          setSessionsError("");
+        }
       })
       .catch((e) => {
-        if (active) setError(e.message);
+        if (active) setSessionsError(e.message);
       })
       .finally(() => {
         if (active && showLoading) setSessionsBusy(false);
@@ -624,6 +628,7 @@ function App() {
             setPage={setPage}
             sessions={openSessions}
             sessionsBusy={sessionsBusy}
+            sessionsError={sessionsError}
             onStart={beginStudentCheckIn}
           />
         ) : page === "Dashboard" ? (
@@ -1003,6 +1008,7 @@ function PortalView({
   onStart,
   sessions = [],
   sessionsBusy = false,
+  sessionsError = "",
 }) {
   if (role === "Student")
     return (
@@ -1046,12 +1052,18 @@ function PortalView({
             <div className="workspace-head">
               <div>
                 <h2>Open attendance sessions</h2>
-                <p>Only courses you are enrolled in appear here.</p>
+                <p>Live courses appear here. Enrolment is required before check-in.</p>
               </div>
             </div>
             {sessionsBusy ? (
               <div className="panel empty-session" role="status">
                 Loading open classes…
+              </div>
+            ) : sessionsError ? (
+              <div className="panel empty-session">
+                <QrCode />
+                <h3>Could not load attendance sessions</h3>
+                <p>{sessionsError}</p>
               </div>
             ) : sessions.length ? (
               <div className="course-grid">
@@ -1067,10 +1079,16 @@ function PortalView({
                         minute: "2-digit",
                       })}
                     </p>
-                    <button className="primary" onClick={() => onStart(item)}>
-                      <ScanFace size={17} />
-                      Start secure check-in
-                    </button>
+                    {item.enrolled ? (
+                      <button className="primary" onClick={() => onStart(item)}>
+                        <ScanFace size={17} />
+                        Start secure check-in
+                      </button>
+                    ) : (
+                      <div className="course-access-note">
+                        Your lecturer must enrol your matric number in this course before you can check in.
+                      </div>
+                    )}
                   </article>
                 ))}
               </div>
@@ -1079,10 +1097,8 @@ function PortalView({
                 <QrCode />
                 <h3>No open sessions</h3>
                 <p>
-                  When your lecturer's planned attendance goes live, the course
-                  will appear here automatically. If it is already live, ask
-                  your lecturer or an admin to enrol your matric number in that
-                  course first.
+                  When your lecturer's planned attendance goes live, it will
+                  appear here automatically.
                 </p>
               </div>
             )}
