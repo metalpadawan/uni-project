@@ -6,12 +6,16 @@ class SessionCreate(BaseModel):
     course_code: str = "CSC 421"
     course_title: str = "Artificial Intelligence"
     duration_minutes: int = Field(120, ge=5, le=360)
+    # When omitted, attendance starts immediately. Frontends should submit an
+    # ISO-8601 value with its UTC offset for a planned one-time session.
+    starts_at: datetime | None = None
 
 
 class SessionOut(BaseModel):
     session_id: str
     course_code: str
     status: str
+    starts_at: datetime
     ends_at: datetime
 
 

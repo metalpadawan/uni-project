@@ -370,20 +370,36 @@ def current_session(db: Session = Depends(get_db), lecturer: User = Depends(requ
     row = db.execute(
         select(AttendanceSession, Course)
         .join(Course, AttendanceSession.course_id == Course.id)
-        .where(AttendanceSession.lecturer_id == lecturer.id, AttendanceSession.status == SessionStatus.open, AttendanceSession.ends_at > now)
+        .where(
+            AttendanceSession.lecturer_id == lecturer.id,
+            AttendanceSession.status == SessionStatus.open,
+            AttendanceSession.started_at <= now,
+            AttendanceSession.ends_at > now,
+        )
         .order_by(AttendanceSession.started_at.desc())
     ).first()
     if not row:
         return None
     session, course = row
-    return SessionOut(session_id=session.id, course_code=course.code, status=session.status.value, ends_at=session.ends_at)
+    return SessionOut(session_id=session.id, course_code=course.code, status=session.status.value, starts_at=session.started_at, ends_at=session.ends_at)
 
 
 @app.post("/sessions", response_model=SessionOut, status_code=status.HTTP_201_CREATED)
 def create_session(payload: SessionCreate, db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
     course = get_or_create_course(db, payload.course_code, payload.course_title, lecturer)
     now = utcnow()
-    session = AttendanceSession(course_id=course.id, lecturer_id=lecturer.id, started_at=now, ends_at=now + timedelta(minutes=payload.duration_minutes), status=SessionStatus.open)
+    starts_at = as_aware(payload.starts_at) if payload.starts_at else now
+    if starts_at < now:
+        raise HTTPException(422, "A planned session must start in the future. Choose 'Start now' for immediate attendance.")
+    if starts_at > now + timedelta(days=31):
+        raise HTTPException(422, "Attendance can be planned no more than one month (31 days) ahead.")
+    session = AttendanceSession(
+        course_id=course.id,
+        lecturer_id=lecturer.id,
+        started_at=starts_at,
+        ends_at=starts_at + timedelta(minutes=payload.duration_minutes),
+        status=SessionStatus.open,
+    )
     db.add(session)
     if settings.demo_mode:
         demo_student_user = db.scalar(select(User).where(User.email == "student@smartattend.local"))
@@ -391,7 +407,35 @@ def create_session(payload: SessionCreate, db: Session = Depends(get_db), lectur
         if demo_student and not db.scalar(select(CourseEnrollment).where(CourseEnrollment.course_id == course.id, CourseEnrollment.student_id == demo_student.id)):
             db.add(CourseEnrollment(course_id=course.id, student_id=demo_student.id))
     db.commit()
-    return SessionOut(session_id=session.id, course_code=course.code, status=session.status.value, ends_at=session.ends_at)
+    session_status = "scheduled" if starts_at > now else session.status.value
+    return SessionOut(session_id=session.id, course_code=course.code, status=session_status, starts_at=session.started_at, ends_at=session.ends_at)
+
+
+@app.get("/sessions/planned", response_model=list[SessionOut])
+def list_planned_sessions(db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
+    """List this lecturer's current and upcoming one-time attendance sessions."""
+    sync_scheduled_sessions(db)
+    now = utcnow()
+    rows = db.execute(
+        select(AttendanceSession, Course)
+        .join(Course, AttendanceSession.course_id == Course.id)
+        .where(
+            AttendanceSession.lecturer_id == lecturer.id,
+            AttendanceSession.status == SessionStatus.open,
+            AttendanceSession.ends_at > now,
+        )
+        .order_by(AttendanceSession.started_at)
+    ).all()
+    return [
+        SessionOut(
+            session_id=session.id,
+            course_code=course.code,
+            status="scheduled" if as_aware(session.started_at) > now else session.status.value,
+            starts_at=session.started_at,
+            ends_at=session.ends_at,
+        )
+        for session, course in rows
+    ]
 
 
 @app.get("/sessions/open")
@@ -408,18 +452,20 @@ def list_open_sessions(db: Session = Depends(get_db), user: User = Depends(requi
         .where(
             CourseEnrollment.student_id == student.id,
             AttendanceSession.status == SessionStatus.open,
+            AttendanceSession.started_at <= now,
             AttendanceSession.ends_at > now,
         )
         .order_by(AttendanceSession.ends_at)
     ).all()
-    return [{"session_id": session.id, "course_code": course.code, "course_title": course.title, "ends_at": session.ends_at} for session, course in rows]
+    return [{"session_id": session.id, "course_code": course.code, "course_title": course.title, "starts_at": session.started_at, "ends_at": session.ends_at} for session, course in rows]
 
 
 @app.post("/sessions/{session_id}/qr", response_model=QRTokenOut)
 def rotate_qr(session_id: str, request: Request, db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
+    sync_scheduled_sessions(db)
     session = db.get(AttendanceSession, session_id)
     now = utcnow()
-    if not session or session.lecturer_id != lecturer.id or session.status != SessionStatus.open or as_aware(session.ends_at) <= now:
+    if not session or session.lecturer_id != lecturer.id or session.status != SessionStatus.open or as_aware(session.started_at) > now or as_aware(session.ends_at) <= now:
         raise HTTPException(409, "Session is closed or expired.")
     expires_at = min(now + timedelta(seconds=settings.qr_ttl_seconds), as_aware(session.ends_at))
     raw = new_qr_token(session_id, expires_at)
@@ -515,11 +561,12 @@ def attendance_capture(*, frame: str, student: Student, student_name: str, marke
 @app.post("/attendance/checkin", response_model=CheckInOut, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.student))):
+    sync_scheduled_sessions(db)
     now = utcnow()
     session = db.get(AttendanceSession, payload.session_id)
     student = db.scalar(select(Student).where(Student.user_id == user.id))
     qr = db.scalar(select(QRToken).where(QRToken.token_hash == token_hash(payload.qr_token), QRToken.session_id == payload.session_id))
-    if not session or session.status != SessionStatus.open or as_aware(session.ends_at) <= now:
+    if not session or session.status != SessionStatus.open or as_aware(session.started_at) > now or as_aware(session.ends_at) <= now:
         raise HTTPException(409, "Attendance session is not open.")
     if not student:
         raise HTTPException(404, "Student is not enrolled.")

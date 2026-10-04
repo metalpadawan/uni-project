@@ -263,9 +263,10 @@ function App() {
   useEffect(() => {
     if (!user || role !== "Student") return;
     let active = true;
-    setSessionsBusy(true);
-    api
-      .openSessions()
+    const loadSessions = (showLoading = false) => {
+      if (showLoading) setSessionsBusy(true);
+      return api
+        .openSessions()
       .then((rows) => {
         if (active) setOpenSessions(rows);
       })
@@ -273,10 +274,14 @@ function App() {
         if (active) setError(e.message);
       })
       .finally(() => {
-        if (active) setSessionsBusy(false);
+        if (active && showLoading) setSessionsBusy(false);
       });
+    };
+    loadSessions(true);
+    const refreshTimer = window.setInterval(() => loadSessions(), 30_000);
     return () => {
       active = false;
+      window.clearInterval(refreshTimer);
     };
   }, [user, role, page]);
   useEffect(() => {
@@ -385,20 +390,9 @@ function App() {
     }
   }
   async function startSession() {
-    setBusy(true);
-    setError("");
-    try {
-      const created = await api.createSession();
-      const freshQr = await api.rotateQr(created.session_id);
-      setSession(created);
-      setQr(freshQr);
-      setModal("lecturer-session");
-    } catch (e) {
-      setError(e.message);
-      setModal("api-error");
-    } finally {
-      setBusy(false);
-    }
+    // Planning first lets it appear automatically for enrolled students at
+    // the selected time instead of forcing the lecturer into the QR modal.
+    setPage("Schedule");
   }
   async function endSession() {
     if (!session) return;
@@ -1024,8 +1018,8 @@ function PortalView({
                 <QrCode />
                 <h3>No open sessions</h3>
                 <p>
-                  When your lecturer starts attendance, the course will appear
-                  here automatically.
+                  When your lecturer's planned attendance goes live, the course
+                  will appear here automatically.
                 </p>
               </div>
             )}
@@ -1605,6 +1599,124 @@ const DAY_NAMES = [
   "Sunday",
 ];
 
+function dateTimeInputValue(offsetMinutes = 5) {
+  const date = new Date(Date.now() + offsetMinutes * 60_000);
+  date.setSeconds(0, 0);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 16);
+}
+
+function OneTimeAttendancePlanner() {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [sessions, setSessions] = useState([]);
+
+  const refresh = () => api.plannedSessions().then(setSessions);
+
+  useEffect(() => {
+    refresh().catch((err) => setError(err.message));
+  }, []);
+
+  async function submit(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const values = new FormData(form);
+    const startNow = values.get("start_now") === "on";
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const created = await api.createSession({
+        course_code: values.get("course_code").trim(),
+        course_title: values.get("course_title").trim(),
+        duration_minutes: Number(values.get("duration_minutes")),
+        ...(startNow
+          ? {}
+          : { starts_at: new Date(values.get("starts_at")).toISOString() }),
+      });
+      form.reset();
+      setNotice(
+        created.status === "scheduled"
+          ? `${created.course_code} is planned. Enrolled students will see it when it goes live.`
+          : `${created.course_code} is live. Students can now open Check in and scan the classroom QR code.`,
+      );
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancel(sessionId) {
+    setBusy(true);
+    setError("");
+    try {
+      await api.closeSession(sessionId);
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <PageHead
+        title="Plan one-time attendance"
+        text="Choose when it opens and how long students can check in. You can plan up to 31 days ahead."
+      />
+      <form className="student-form" onSubmit={submit}>
+        <label>Course code<input name="course_code" placeholder="CSC 421" required /></label>
+        <label>Course title<input name="course_title" placeholder="Artificial Intelligence" required /></label>
+        <label>
+          Goes live
+          <input name="starts_at" type="datetime-local" min={dateTimeInputValue()} max={dateTimeInputValue(31 * 24 * 60)} defaultValue={dateTimeInputValue(5)} required />
+        </label>
+        <label>Duration (minutes)<input name="duration_minutes" type="number" defaultValue={120} min={5} max={360} required /></label>
+        <label className="check-label"><input name="start_now" type="checkbox" /> Start immediately instead</label>
+        <button className="primary" disabled={busy}>{busy ? "Saving..." : "Plan attendance"}</button>
+      </form>
+      {error && <p className="inline-error" role="alert">{error}</p>}
+      {notice && <p className="success-message" role="status">{notice}</p>}
+      <div className="trust-note">
+        <QrCode />
+        <div>
+          <b>Students start on their own dashboard</b>
+          <p>When the session is live, enrolled students see it under Check in and open their scanner. Use “Show live QR” on the dashboard only to put a QR code on a separate classroom screen.</p>
+        </div>
+      </div>
+      {sessions.length > 0 && (
+        <div className="records panel" style={{ marginBottom: 28 }}>
+          <div className="panel-head">
+            <div>
+              <h3>Planned one-time attendance</h3>
+              <p>Future sessions become visible to enrolled students only while live.</p>
+            </div>
+          </div>
+          <table>
+            <thead><tr><th>Course</th><th>Starts</th><th>Closes</th><th>Status</th><th /></tr></thead>
+            <tbody>
+              {sessions.map((session) => (
+                <tr key={session.session_id}>
+                  <td><b>{session.course_code}</b></td>
+                  <td>{new Date(session.starts_at).toLocaleString()}</td>
+                  <td>{new Date(session.ends_at).toLocaleString()}</td>
+                  <td><span className={session.status === "scheduled" ? "status pending" : "status present"}>{session.status === "scheduled" ? "Planned" : "Live"}</span></td>
+                  <td><button className="remove" disabled={busy} onClick={() => cancel(session.session_id)}>{session.status === "scheduled" ? "Cancel" : "Close"}</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
 function LecturerSchedule() {
   const [schedule, setSchedule] = useState([]),
     [loading, setLoading] = useState(true),
@@ -1661,6 +1773,7 @@ function LecturerSchedule() {
 
   return (
     <section className="workspace">
+      <OneTimeAttendancePlanner />
       <PageHead
         title="Weekly class schedule"
         text="Attendance opens and closes on its own at these times — no need to click Start."

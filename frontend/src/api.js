@@ -66,15 +66,17 @@ async function request(path, options = {}) {
 
 export const api = {
   health: () => request("/health"),
-  createSession: () =>
+  createSession: (data = {}) =>
     request("/sessions", {
       method: "POST",
       body: JSON.stringify({
         course_code: "CSC 421",
         course_title: "Artificial Intelligence",
         duration_minutes: 120,
+        ...data,
       }),
     }),
+  plannedSessions: () => request("/sessions/planned"),
   openSessions: () => request("/sessions/open"),
   currentSession: () => request("/sessions/current"),
   rotateQr: (sessionId) =>

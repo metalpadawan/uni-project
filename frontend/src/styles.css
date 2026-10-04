@@ -1251,6 +1251,32 @@ footer {
   background: var(--wash);
 }
 
+.student-form .check-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.student-form .check-label input {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.success-message {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  color: var(--green);
+  background: var(--green-tint);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .notice {
   display: flex;
   align-items: center;
