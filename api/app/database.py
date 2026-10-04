@@ -43,6 +43,12 @@ if database_url.startswith("postgresql"):
                 "ADD COLUMN IF NOT EXISTS capture_path varchar(500)"
             )
         )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS attendance_records "
+                "ADD COLUMN IF NOT EXISTS capture_image bytea"
+            )
+        )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 

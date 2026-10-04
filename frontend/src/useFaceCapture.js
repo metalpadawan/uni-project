@@ -50,10 +50,15 @@ export function useFaceCapture(enabled = true, { frames = 1, gapMs = 1200 } = {}
 
   function grabFrame() {
     const el = canvas.current;
-    el.width = video.current.videoWidth;
-    el.height = video.current.videoHeight;
+    const maximumDimension = 640;
+    const scale = Math.min(
+      1,
+      maximumDimension / Math.max(video.current.videoWidth, video.current.videoHeight),
+    );
+    el.width = Math.max(1, Math.round(video.current.videoWidth * scale));
+    el.height = Math.max(1, Math.round(video.current.videoHeight * scale));
     el.getContext("2d").drawImage(video.current, 0, 0);
-    return el.toDataURL("image/jpeg", 0.85);
+    return el.toDataURL("image/jpeg", 0.7);
   }
 
   async function capture() {

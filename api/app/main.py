@@ -1,7 +1,6 @@
 import base64
 import io
 from datetime import timedelta
-from pathlib import Path
 import re
 from zoneinfo import ZoneInfo
 
@@ -494,33 +493,23 @@ def _capture_component(value: str) -> str:
     return result[:80] or "student"
 
 
-def store_attendance_capture(*, frame: str, student: Student, student_name: str, marked_at, attendance_id: str) -> str:
-    """Store a successful check-in frame outside the public web root.
-
-    The returned relative path is kept with the attendance record for an
-    authorised audit. Capture storage is deliberately not mounted as a public
-    static route.
-    """
+def attendance_capture(*, frame: str, student: Student, student_name: str, marked_at, attendance_id: str) -> tuple[str, bytes]:
+    """Return a private logical path and image bytes for a verified check-in."""
     try:
         encoded = frame.split(",", 1)[-1]
         image = base64.b64decode(encoded, validate=True)
     except (ValueError, TypeError):
         raise HTTPException(422, "The attendance photo could not be stored.")
-    if not image or len(image) > 5 * 1024 * 1024:
+    # Browser capture is resized/compressed before upload. Keeping each image
+    # bounded protects the database from an accidental oversized upload.
+    if not image or len(image) > 1024 * 1024:
         raise HTTPException(422, "The attendance photo is invalid or too large.")
 
     local_time = marked_at.astimezone(ZoneInfo(settings.timezone))
     student_folder = f"{_capture_component(student_name)}-{_capture_component(student.matric_no)}"
-    relative_dir = Path(student_folder) / local_time.strftime("%Y-%m-%d")
+    relative_dir = f"{student_folder}/{local_time.strftime('%Y-%m-%d')}"
     filename = f"{local_time.strftime('%H-%M-%S')}_{attendance_id}.jpg"
-    base_dir = Path(settings.attendance_capture_dir)
-    target = base_dir / relative_dir / filename
-    try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(image)
-    except OSError:
-        raise HTTPException(503, "Attendance capture storage is unavailable. Please try again.")
-    return str(relative_dir / filename)
+    return f"{relative_dir}/{filename}", image
 
 
 @app.post("/attendance/checkin", response_model=CheckInOut, status_code=status.HTTP_201_CREATED)
@@ -587,7 +576,7 @@ def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), 
         marked_at=now,
         status=AttendanceStatus.present,
     )
-    record.capture_path = store_attendance_capture(
+    record.capture_path, record.capture_image = attendance_capture(
         frame=payload.frame_a,
         student=student,
         student_name=user.name,

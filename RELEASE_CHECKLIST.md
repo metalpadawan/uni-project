@@ -60,7 +60,7 @@ Use this as the final handoff guide. Steps marked **You** require your accounts,
 4. **You:** Create a Vercel project from the same repository, choosing `frontend` as its root directory. Add `VITE_API_URL` with the public Render API URL (for example, `https://smartattend-api.onrender.com`) and deploy.
 5. **You:** Add the final Vercel URL to the API's `ALLOWED_ORIGINS` value in Render, redeploy the API, and test login from the public frontend. The exact origin matters.
 6. **You:** Bootstrap the production administrator through `/docs`, then repeat the user/course/schedule setup in section 3.
-7. **You:** If you need to retain successful attendance photos, upgrade the API to a paid Render plan, attach a 1 GB disk at `/var/data`, set `ATTENDANCE_CAPTURE_DIR=/var/data/attendance-captures`, and redeploy. The API must remain a single instance while it uses this local disk.
+7. **You:** Successful attendance photos are stored privately in PostgreSQL with their student/date/time audit path. Back up the database before the free Render Postgres expiry date.
 
 ## 5. Acceptance test before submission
 

@@ -18,16 +18,13 @@ services:
     image: python:3.12-slim
     working_dir: /app
     command: sh -c "pip install -r requirements.txt && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
-    volumes:
-      - ./api:/app
-      - ./attendance-captures:/app/attendance-captures
+    volumes: ["./api:/app"]
     environment:
       DATABASE_URL: postgresql+psycopg://smart_attend:${POSTGRES_PASSWORD:-local-development-only}@db:5432/smart_attend
       QR_SIGNING_SECRET: ${QR_SIGNING_SECRET:-development-only-change-me}
       JWT_SECRET: ${JWT_SECRET:-development-jwt-secret-change-before-deploy}
       DEMO_MODE: ${DEMO_MODE:-false}
       FACE_SERVICE_URL: http://face-service:8001
-      ATTENDANCE_CAPTURE_DIR: /app/attendance-captures
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173}
     ports: ["8000:8000"]
     # `db` must be accepting connections, not just started, before the api container's

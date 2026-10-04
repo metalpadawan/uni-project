@@ -52,6 +52,4 @@ This starts an isolated local demo. For non-demo use, keep `DEMO_MODE=false` and
 
 ## Attendance capture storage
 
-After a QR-first, face-verified check-in succeeds, SmartAttend stores the submitted face frame privately at `ATTENDANCE_CAPTURE_DIR/<student-name>-<matric-no>/<YYYY-MM-DD>/<HH-MM-SS>_<attendance-id>.jpg`. Its relative path is also saved with the attendance record. The API never exposes this directory as a public web route.
-
-For local Docker use, captures are written to the ignored `attendance-captures/` folder in the repository. For Render, attach a persistent disk to the **API** service at `/var/data`, set `ATTENDANCE_CAPTURE_DIR=/var/data/attendance-captures`, and keep the API as a single instance. Render's default filesystem is temporary, so files will otherwise disappear after a restart or deploy. See [Render's persistent-disk documentation](https://render.com/docs/disks).
+After a QR-first, face-verified check-in succeeds, SmartAttend stores the submitted face frame privately in PostgreSQL alongside the attendance record. Its logical audit path is `<student-name>-<matric-no>/<YYYY-MM-DD>/<HH-MM-SS>_<attendance-id>.jpg`; the image is not served through a public web route. This works on free Render because the image survives API restarts and deploys with the database.
