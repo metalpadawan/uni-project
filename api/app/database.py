@@ -20,18 +20,7 @@ def _use_psycopg3(url: str) -> str:
 
 database_url = _use_psycopg3(settings.database_url)
 connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-engine_options = {"connect_args": connect_args}
-if database_url.startswith("postgresql"):
-    # Each API worker keeps a small, bounded pool. A managed PgBouncer pool in
-    # production absorbs bursts across multiple service instances.
-    engine_options.update(
-        pool_pre_ping=True,
-        pool_size=settings.database_pool_size,
-        max_overflow=settings.database_max_overflow,
-        pool_timeout=settings.database_pool_timeout_seconds,
-        pool_recycle=settings.database_pool_recycle_seconds,
-    )
-engine = create_engine(database_url, **engine_options)
+engine = create_engine(database_url, connect_args=connect_args)
 
 # Render and the local Docker database both include pgvector. Creating the
 # extension here makes a new managed database ready before SQLAlchemy creates

@@ -72,10 +72,6 @@ Use this as the final handoff guide. Steps marked **You** require your accounts,
 7. Repeat the successful check-in: it must not create a duplicate record.
 8. Log out and confirm the browser can no longer use the old session.
 
-## 6. Large-class capacity
-
-For a lecture hall with up to 1,000 students signing in or checking in during the same period, follow [CAPACITY_PLAN.md](CAPACITY_PLAN.md). The free Render services cannot meet this target because they are limited to one instance.
-
-## 7. Windows restriction on this machine
+## 6. Windows restriction on this machine
 
 This computer’s Application Control policy blocks standard Python DLLs such as `pyexpat` and `unicodedata`. That is why complete local pytest reruns cannot finish here; it is an operating-system policy, not an application test failure. Ask your system administrator to allow the approved Python 3.12 installation and its standard-library DLLs, or rely on the included GitHub Actions run for independent verification.

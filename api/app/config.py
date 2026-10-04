@@ -12,15 +12,6 @@ class Settings(BaseSettings):
     face_service_url: str = "http://127.0.0.1:8001"
     face_service_timeout_seconds: float = 60.0
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
-    # Use a Redis/Valkey URL in production so every API instance enforces the
-    # same limits. ``memory://`` remains useful for a one-process local setup.
-    rate_limit_storage_uri: str = "memory://"
-    login_rate_limit: str = "1500/minute"
-    checkin_rate_limit: str = "2000/minute"
-    database_pool_size: int = 5
-    database_max_overflow: int = 5
-    database_pool_timeout_seconds: int = 10
-    database_pool_recycle_seconds: int = 1800
     jwt_secret: str = DEV_DEFAULT_JWT_SECRET
     access_token_minutes: int = 15
     refresh_token_days: int = 7

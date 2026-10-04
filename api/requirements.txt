@@ -8,6 +8,5 @@ argon2-cffi==25.1.0
 slowapi==0.1.9
 pytest==8.4.1
 httpx==0.28.1
-redis==5.2.1
 qrcode[pil]==8.2
 pgvector==0.4.1
