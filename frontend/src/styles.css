@@ -368,6 +368,73 @@ header h1 {
   box-shadow: 0 0 0 2px var(--surface);
 }
 
+.notification-wrap {
+  position: relative;
+}
+
+.notification-dropdown {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(380px, calc(100vw - 32px));
+  max-height: min(500px, calc(100vh - 110px));
+  overflow: auto;
+  z-index: 30;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-md);
+}
+
+.notification-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 16px 11px;
+  border-bottom: 1px solid var(--line);
+}
+
+.notification-title b { font-size: 14px; }
+.notification-title span {
+  min-width: 20px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--wash);
+  color: var(--muted);
+  font: 700 10px var(--font-mono);
+  text-align: center;
+}
+
+.notification-dropdown ul { list-style: none; margin: 0; padding: 6px; }
+.notification-dropdown li + li { border-top: 1px solid var(--line); }
+.notification-dropdown li button {
+  display: grid;
+  grid-template-columns: 9px 1fr;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+.notification-dropdown li button:hover { background: var(--wash); }
+.notification-dropdown li button > span:last-child { min-width: 0; }
+.notification-dropdown li b,
+.notification-dropdown li small,
+.notification-dropdown li em { display: block; }
+.notification-dropdown li b { font-size: 11px; }
+.notification-dropdown li small { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+.notification-dropdown li em { margin-top: 5px; color: var(--faint); font: 700 9px var(--font-mono); font-style: normal; }
+.notification-dot { width: 8px; height: 8px; margin-top: 4px; border-radius: 50%; background: var(--faint); }
+.notification-dot.session-live { background: var(--green); box-shadow: 0 0 0 3px var(--green-tint); }
+.notification-dot.attendance-recorded { background: var(--blue); }
+.notification-dot.session-planned,
+.notification-dot.weekly-schedule { background: var(--purple); }
+.notification-dot.registration-review { background: var(--ember); }
+.notification-empty { margin: 0; padding: 22px 16px; color: var(--muted); font-size: 12px; text-align: center; }
+
 .mobile-avatar,
 .hamb {
   display: none;

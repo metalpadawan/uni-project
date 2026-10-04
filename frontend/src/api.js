@@ -66,6 +66,7 @@ async function request(path, options = {}) {
 
 export const api = {
   health: () => request("/health"),
+  notifications: () => request("/notifications"),
   createSession: (data = {}) =>
     request("/sessions", {
       method: "POST",

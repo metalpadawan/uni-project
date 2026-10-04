@@ -19,7 +19,7 @@ from .config import settings
 from .database import Base, engine, get_db
 from .auth import hash_password, redeem_refresh_token, require_roles, revoke_refresh_token, token_pair, verify_password
 from .models import AttendanceAttempt, AttendanceRecord, AttendanceSession, AttendanceStatus, ClassSchedule, Course, CourseEnrollment, FaceEmbedding, PendingStudent, QRToken, RegistrationStatus, SessionStatus, Student, User, UserRole, uid
-from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseEnrollmentCreate, CourseEnrollmentOut, CourseOut, LoginRequest, PendingStudentOut, QRTokenOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
+from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseEnrollmentCreate, CourseEnrollmentOut, CourseOut, LoginRequest, NotificationOut, PendingStudentOut, QRTokenOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
 from .scheduling import sync_scheduled_sessions
 from .security import as_aware, new_qr_token, signature_is_valid, token_hash, utcnow
 
@@ -227,6 +227,139 @@ def my_attendance(db: Session = Depends(get_db), user: User = Depends(require_ro
         for attempt, session, course in attempts
     )
     return sorted(rows, key=lambda row: row.time, reverse=True)
+
+
+def _next_scheduled_start(schedule: ClassSchedule, now):
+    """Return the next occurrence of a weekly class in the configured timezone."""
+    local_now = now.astimezone(ZoneInfo(settings.timezone))
+    days_until = (schedule.day_of_week - local_now.weekday()) % 7
+    start = (local_now + timedelta(days=days_until)).replace(
+        hour=schedule.start_time.hour,
+        minute=schedule.start_time.minute,
+        second=0,
+        microsecond=0,
+    )
+    if start <= local_now:
+        start += timedelta(days=7)
+    return start.astimezone(now.tzinfo)
+
+
+@app.get("/notifications", response_model=list[NotificationOut])
+def notifications(db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.student, UserRole.lecturer, UserRole.admin))):
+    """Return a small, role-appropriate notification feed from persisted data."""
+    sync_scheduled_sessions(db)
+    now = utcnow()
+    items: list[NotificationOut] = []
+
+    if user.role == UserRole.student:
+        student = db.scalar(select(Student).where(Student.user_id == user.id))
+        if not student:
+            raise HTTPException(404, "Student profile was not found.")
+        session_rows = db.execute(
+            select(AttendanceSession, Course)
+            .join(Course, AttendanceSession.course_id == Course.id)
+            .join(CourseEnrollment, CourseEnrollment.course_id == Course.id)
+            .where(
+                CourseEnrollment.student_id == student.id,
+                AttendanceSession.status == SessionStatus.open,
+                AttendanceSession.ends_at > now,
+            )
+            .order_by(AttendanceSession.started_at)
+        ).all()
+        for session, course in session_rows:
+            live = as_aware(session.started_at) <= now
+            items.append(NotificationOut(
+                id=f"session-{session.id}",
+                kind="session-live" if live else "session-planned",
+                title=f"{course.code} attendance {'is open' if live else 'is scheduled'}",
+                detail=("Open Check in to scan the classroom QR code before it closes."
+                        if live else f"Opens {as_aware(session.started_at).astimezone(ZoneInfo(settings.timezone)).strftime('%a, %d %b at %I:%M %p')}."),
+                occurred_at=session.started_at,
+                session_id=session.id,
+            ))
+        schedule_rows = db.execute(
+            select(ClassSchedule, Course)
+            .join(Course, ClassSchedule.course_id == Course.id)
+            .join(CourseEnrollment, CourseEnrollment.course_id == Course.id)
+            .where(CourseEnrollment.student_id == student.id)
+        ).all()
+        for schedule, course in schedule_rows:
+            starts_at = _next_scheduled_start(schedule, now)
+            items.append(NotificationOut(
+                id=f"weekly-{schedule.id}-{starts_at.date().isoformat()}",
+                kind="weekly-schedule",
+                title=f"{course.code} weekly class",
+                detail=f"Attendance is scheduled to open {starts_at.astimezone(ZoneInfo(settings.timezone)).strftime('%a, %d %b at %I:%M %p')}.",
+                occurred_at=starts_at,
+            ))
+        record_rows = db.execute(
+            select(AttendanceRecord, Course)
+            .join(AttendanceSession, AttendanceRecord.session_id == AttendanceSession.id)
+            .join(Course, AttendanceSession.course_id == Course.id)
+            .where(AttendanceRecord.student_id == student.id)
+            .order_by(AttendanceRecord.marked_at.desc())
+            .limit(10)
+        ).all()
+        for record, course in record_rows:
+            items.append(NotificationOut(
+                id=f"attendance-{record.id}",
+                kind="attendance-recorded",
+                title=f"Attendance recorded for {course.code}",
+                detail="Face and QR verification were successful.",
+                occurred_at=record.marked_at,
+                session_id=record.session_id,
+            ))
+    elif user.role == UserRole.lecturer:
+        session_rows = db.execute(
+            select(AttendanceSession, Course)
+            .join(Course, AttendanceSession.course_id == Course.id)
+            .where(
+                AttendanceSession.lecturer_id == user.id,
+                AttendanceSession.status == SessionStatus.open,
+                AttendanceSession.ends_at > now,
+            )
+            .order_by(AttendanceSession.started_at)
+        ).all()
+        for session, course in session_rows:
+            live = as_aware(session.started_at) <= now
+            items.append(NotificationOut(
+                id=f"session-{session.id}",
+                kind="session-live" if live else "session-planned",
+                title=f"{course.code} attendance {'is live' if live else 'is planned'}",
+                detail="Students can check in now." if live else "It will open automatically for enrolled students.",
+                occurred_at=session.started_at,
+                session_id=session.id,
+            ))
+        record_rows = db.execute(
+            select(AttendanceRecord, Course)
+            .join(AttendanceSession, AttendanceRecord.session_id == AttendanceSession.id)
+            .join(Course, AttendanceSession.course_id == Course.id)
+            .where(AttendanceSession.lecturer_id == user.id)
+            .order_by(AttendanceRecord.marked_at.desc())
+            .limit(10)
+        ).all()
+        for record, course in record_rows:
+            items.append(NotificationOut(
+                id=f"attendance-{record.id}",
+                kind="attendance-recorded",
+                title=f"A student checked in to {course.code}",
+                detail="Face and QR verification were successful.",
+                occurred_at=record.marked_at,
+                session_id=record.session_id,
+            ))
+    else:
+        pending = db.scalar(select(func.count(PendingStudent.id)).where(PendingStudent.status == RegistrationStatus.pending)) or 0
+        if pending:
+            items.append(NotificationOut(
+                id="pending-students",
+                kind="registration-review",
+                title="Student registrations need review",
+                detail=f"{pending} registration{'s' if pending != 1 else ''} await approval.",
+                occurred_at=now,
+            ))
+
+    priority = {"session-live": 0, "attendance-recorded": 1, "session-planned": 2, "weekly-schedule": 3, "registration-review": 0}
+    return sorted(items, key=lambda item: (priority.get(item.kind, 9), item.occurred_at), reverse=False)[:20]
 
 
 def get_or_create_course(db: Session, code: str, title: str, lecturer: User) -> Course:

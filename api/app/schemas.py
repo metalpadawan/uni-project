@@ -140,6 +140,15 @@ class AttendanceHistoryOut(BaseModel):
     face_match_score: float
 
 
+class NotificationOut(BaseModel):
+    id: str
+    kind: str
+    title: str
+    detail: str
+    occurred_at: datetime
+    session_id: str | None = None
+
+
 class RosterStudentOut(BaseModel):
     name: str
     matric_no: str

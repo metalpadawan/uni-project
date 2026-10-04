@@ -250,6 +250,8 @@ function App() {
   const [qr, setQr] = useState(null);
   const [openSessions, setOpenSessions] = useState([]);
   const [sessionsBusy, setSessionsBusy] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [records, setRecords] = useState(
     () => JSON.parse(localStorage.getItem("attendanceRecords") || "null") || [],
   );
@@ -260,6 +262,20 @@ function App() {
     () => localStorage.setItem("attendanceRecords", JSON.stringify(records)),
     [records],
   );
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    const loadNotifications = () =>
+      api.notifications().then((items) => {
+        if (active) setNotifications(items);
+      }).catch(() => {});
+    loadNotifications();
+    const refreshTimer = window.setInterval(loadNotifications, 30_000);
+    return () => {
+      active = false;
+      window.clearInterval(refreshTimer);
+    };
+  }, [user, role]);
   useEffect(() => {
     if (!user || role !== "Student") return;
     let active = true;
@@ -423,6 +439,7 @@ function App() {
         frame_a: frameA,
         frame_b: frameB,
       });
+      api.notifications().then(setNotifications).catch(() => {});
       setDone(true);
     } catch (e) {
       setError(e.message);
@@ -544,10 +561,51 @@ function App() {
               <Search size={17} />
               <input aria-label="Search" placeholder="Search records..." />
             </label>
-            <button className="icon" aria-label="Notifications">
+            <div className="notification-wrap">
+            <button
+              className="icon"
+              aria-label="Notifications"
+              aria-expanded={notificationsOpen}
+              onClick={() => setNotificationsOpen((open) => !open)}
+            >
               <Bell size={19} />
-              <i />
+              {notifications.length > 0 && <i />}
             </button>
+            {notificationsOpen && (
+              <div className="notification-dropdown" role="dialog" aria-label="Notifications">
+                <div className="notification-title">
+                  <b>Updates</b>
+                  <span>{notifications.length}</span>
+                </div>
+                {notifications.length ? (
+                  <ul>
+                    {notifications.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          onClick={() => {
+                            setNotificationsOpen(false);
+                            if (role === "Student" && item.kind === "session-live") setPage("Check in");
+                            if (role === "Student" && item.kind === "attendance-recorded") setPage("My attendance");
+                            if (role === "Lecturer" && item.kind === "session-live") setPage("Dashboard");
+                            if (role === "Admin" && item.kind === "registration-review") setPage("Accounts");
+                          }}
+                        >
+                          <span className={`notification-dot ${item.kind}`} />
+                          <span>
+                            <b>{item.title}</b>
+                            <small>{item.detail}</small>
+                            <em>{new Date(item.occurred_at).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</em>
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="notification-empty">No new updates yet.</p>
+                )}
+              </div>
+            )}
+            </div>
             <button
               className="mobile-avatar"
               onClick={() => setMenu(true)}
@@ -1019,7 +1077,9 @@ function PortalView({
                 <h3>No open sessions</h3>
                 <p>
                   When your lecturer's planned attendance goes live, the course
-                  will appear here automatically.
+                  will appear here automatically. If it is already live, ask
+                  your lecturer or an admin to enrol your matric number in that
+                  course first.
                 </p>
               </div>
             )}
