@@ -370,6 +370,7 @@ function App() {
       ? [
           ["Dashboard", LayoutDashboard],
           ["Schedule", BookOpen],
+          ["Courses", BookOpen],
           ["Students", Users],
           ["Attendance", CalendarDays],
           ["Reports", FileBarChart],
@@ -801,6 +802,8 @@ function App() {
           </>
         ) : page === "Schedule" ? (
           <LecturerSchedule />
+        ) : page === "Courses" ? (
+          <AdminCourses />
         ) : (
           <Workspace
             page={page}
