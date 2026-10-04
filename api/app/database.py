@@ -37,6 +37,12 @@ if database_url.startswith("postgresql"):
                 "ALTER COLUMN face_embedding DROP NOT NULL"
             )
         )
+        connection.execute(
+            text(
+                "ALTER TABLE IF EXISTS attendance_records "
+                "ADD COLUMN IF NOT EXISTS capture_path varchar(500)"
+            )
+        )
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 

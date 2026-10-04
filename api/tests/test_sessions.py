@@ -1,3 +1,4 @@
+import base64
 from datetime import timedelta
 
 import pytest
@@ -96,21 +97,27 @@ def checkin_setup(db):
     return student_user, session, raw
 
 
-def test_combined_checkin_writes_present_only_after_both_checks(db, monkeypatch):
+def test_combined_checkin_writes_present_only_after_both_checks(db, monkeypatch, tmp_path):
     student_user, session, raw = checkin_setup(db)
     monkeypatch.setattr("app.main.httpx.post", lambda *args, **kwargs: FaceResponse(True))
-    payload = CheckIn(session_id=session.id, qr_token=raw, frame_a="frame-a", frame_b="frame-b")
+    monkeypatch.setattr("app.main.settings.attendance_capture_dir", str(tmp_path))
+    frame = "data:image/jpeg;base64," + base64.b64encode(b"test-image").decode()
+    payload = CheckIn(session_id=session.id, qr_token=raw, frame_a=frame, frame_b=frame)
 
     result = check_in.__wrapped__(None, payload, db, student_user)
 
     assert result.status == "present"
     assert db.query(AttendanceRecord).count() == 1
+    stored = db.scalar(select(AttendanceRecord)).capture_path
+    assert stored and (tmp_path / stored).read_bytes() == b"test-image"
 
 
-def test_face_mismatch_is_audited_and_allows_a_later_valid_retry(db, monkeypatch):
+def test_face_mismatch_is_audited_and_allows_a_later_valid_retry(db, monkeypatch, tmp_path):
     student_user, session, raw = checkin_setup(db)
     monkeypatch.setattr("app.main.httpx.post", lambda *args, **kwargs: FaceResponse(False))
-    payload = CheckIn(session_id=session.id, qr_token=raw, frame_a="frame-a", frame_b="frame-b")
+    monkeypatch.setattr("app.main.settings.attendance_capture_dir", str(tmp_path))
+    frame = "data:image/jpeg;base64," + base64.b64encode(b"test-image").decode()
+    payload = CheckIn(session_id=session.id, qr_token=raw, frame_a=frame, frame_b=frame)
 
     with pytest.raises(HTTPException) as error:
         check_in.__wrapped__(None, payload, db, student_user)

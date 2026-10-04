@@ -157,6 +157,7 @@ class AttendanceRecord(Base):
     student_id: Mapped[str] = mapped_column(ForeignKey("students.id"))
     face_match_score: Mapped[float] = mapped_column(Float)
     qr_token_id: Mapped[str] = mapped_column(ForeignKey("qr_tokens.id"))
+    capture_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     marked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[AttendanceStatus] = mapped_column(Enum(AttendanceStatus))
 

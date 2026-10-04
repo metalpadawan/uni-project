@@ -49,3 +49,9 @@ This starts an isolated local demo. For non-demo use, keep `DEMO_MODE=false` and
 - **Rotate `JWT_SECRET` and `QR_SIGNING_SECRET`** to real random values. The api refuses to start with `DEMO_MODE=false` and either secret still at its development-placeholder value, so this is enforced, not just documented — but only once demo mode is actually off.
 - **Serve over HTTPS.** `getUserMedia` (camera access, used for face check-in/enrolment) is blocked by browsers on any origin that isn't `https://` or `localhost`. This only matters once the frontend is reachable somewhere other than a developer's own machine — set up TLS termination (a reverse proxy, load balancer, or platform-provided HTTPS) in front of wherever the frontend and api actually get deployed.
 - **Re-enrol everyone** if this is following an earlier deployment that predates the server-side face-verification rewrite — face templates from the old client-side pipeline aren't compatible with the current one.
+
+## Attendance capture storage
+
+After a QR-first, face-verified check-in succeeds, SmartAttend stores the submitted face frame privately at `ATTENDANCE_CAPTURE_DIR/<student-name>-<matric-no>/<YYYY-MM-DD>/<HH-MM-SS>_<attendance-id>.jpg`. Its relative path is also saved with the attendance record. The API never exposes this directory as a public web route.
+
+For local Docker use, captures are written to the ignored `attendance-captures/` folder in the repository. For Render, attach a persistent disk to the **API** service at `/var/data`, set `ATTENDANCE_CAPTURE_DIR=/var/data/attendance-captures`, and keep the API as a single instance. Render's default filesystem is temporary, so files will otherwise disappear after a restart or deploy. See [Render's persistent-disk documentation](https://render.com/docs/disks).

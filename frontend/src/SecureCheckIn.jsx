@@ -16,7 +16,7 @@ function tokenFromQr(value) {
 }
 
 export default function SecureCheckIn({ course, busy, error, onComplete }) {
-  const [stage, setStage] = useState("face");
+  const [stage, setStage] = useState("qr");
   const {
     videoRef: faceVideo,
     captured,
@@ -38,14 +38,14 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
     [],
   );
 
-  async function beginQr() {
-    setStage("qr");
+  async function startQr() {
     setQrMessage("Point the rear camera at the lecturer’s rotating QR code.");
     try {
       stream.current = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: { ideal: "environment" } },
         audio: false,
       });
+      if (!qrVideo.current) return stop(stream.current);
       qrVideo.current.srcObject = stream.current;
       if ("BarcodeDetector" in window) {
         const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
@@ -55,20 +55,31 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
           const codes = await detector.detect(qrVideo.current).catch(() => []);
           if (codes[0]?.rawValue) {
             setToken(tokenFromQr(codes[0].rawValue));
-            setQrMessage("QR code captured. Ready to verify both checks.");
+            setQrMessage("QR code captured. Continue to live face capture.");
             stop(stream.current);
             return;
           }
           animation.current = requestAnimationFrame(scan);
         };
         scan();
-      } else
+      } else {
         setQrMessage(
           "Automatic QR scanning is unavailable in this browser. Paste the QR token below.",
         );
+      }
     } catch {
       setQrMessage("Rear camera could not start. Paste the QR token below.");
     }
+  }
+
+  useEffect(() => {
+    if (stage === "qr") startQr();
+  }, [stage]);
+
+  function beginFace() {
+    cancelAnimationFrame(animation.current);
+    stop(stream.current);
+    setStage("face");
   }
 
   const message = stage === "face" ? faceMessage : qrMessage;
@@ -78,35 +89,33 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
     <div className="secure-capture">
       <div
         className="capture-progress"
-        aria-label={`Check-in step ${stage === "face" ? 1 : 2} of 2`}
+        aria-label={`Check-in step ${stage === "qr" ? 1 : 2} of 2`}
       >
-        <span className="complete">
-          <Check />
+        <span className={stage === "face" ? "complete" : ""}>
+          {stage === "face" ? <Check /> : <QrCode />}
         </span>
         <i />
-        <span className={stage === "qr" ? "complete" : ""}>
-          {stage === "qr" ? <QrCode /> : <Camera />}
+        <span className={stage === "face" ? "complete" : ""}>
+          <Camera />
         </span>
       </div>
-      <small>STEP {stage === "face" ? "1" : "2"} OF 2</small>
+      <small>STEP {stage === "qr" ? "1" : "2"} OF 2</small>
       <h2 id="modal-title">
-        {stage === "face"
-          ? "Verify your live face"
-          : `Scan ${course?.course_code || "class"} QR code`}
+        {stage === "qr"
+          ? `Scan ${course?.course_code || "class"} QR code`
+          : "Verify your live face"}
       </h2>
       <div className="camera-frame">
         <video
-          ref={stage === "face" ? faceVideo : qrVideo}
+          ref={stage === "qr" ? qrVideo : faceVideo}
           autoPlay
           muted
           playsInline
           aria-label={
-            stage === "face"
-              ? "Front camera face preview"
-              : "Rear camera QR scanner"
+            stage === "qr" ? "Rear camera QR scanner" : "Front camera face preview"
           }
         />
-        <div className={stage === "face" ? "face-guide" : "qr-guide"} />
+        <div className={stage === "qr" ? "qr-guide" : "face-guide"} />
       </div>
       <p className="capture-message" role="status">
         {message}
@@ -127,26 +136,21 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
           {error}
         </p>
       )}
-      {stage === "face" ? (
-        facesReady ? (
-          <button className="primary full" onClick={beginQr}>
-            Continue <QrCode size={17} />
-          </button>
-        ) : (
-          <button className="primary full" disabled={capturing} onClick={capture}>
-            {capturing ? "Capturing…" : "Capture face"} <Camera size={17} />
-          </button>
-        )
-      ) : (
+      {stage === "qr" ? (
+        <button className="primary full" disabled={!token} onClick={beginFace}>
+          Continue to face capture <Camera size={17} />
+        </button>
+      ) : facesReady ? (
         <button
           className="primary full"
-          disabled={!token || busy}
-          onClick={() =>
-            onComplete({ frameA: captured[0], frameB: captured[1], token })
-          }
+          disabled={busy}
+          onClick={() => onComplete({ frameA: captured[0], frameB: captured[1], token })}
         >
-          {busy ? "Verifying both checks…" : "Verify face + QR"}{" "}
-          <Check size={17} />
+          {busy ? "Verifying attendance…" : "Verify face and mark present"} <Check size={17} />
+        </button>
+      ) : (
+        <button className="primary full" disabled={capturing} onClick={capture}>
+          {capturing ? "Capturing…" : "Capture face"} <Camera size={17} />
         </button>
       )}
     </div>

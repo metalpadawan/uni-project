@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     face_distance_threshold: float = 1.128
     face_service_url: str = "http://127.0.0.1:8001"
     face_service_timeout_seconds: float = 60.0
+    attendance_capture_dir: str = "attendance-captures"
     allowed_origins: str = "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173"
     jwt_secret: str = DEV_DEFAULT_JWT_SECRET
     access_token_minutes: int = 15
