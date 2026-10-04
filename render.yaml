@@ -36,17 +36,15 @@ services:
       - key: FACE_DISTANCE_THRESHOLD
         value: "1.128"
       - key: FACE_SERVICE_URL
-        value: "https://smartattend-face-service.onrender.com"
+        # Render assigns a suffix to a service name, so set this to the actual
+        # public URL of the face service in the Render dashboard.
+        sync: false
       - key: FACE_SERVICE_TIMEOUT_SECONDS
         value: "60"
       - key: ALLOWED_ORIGINS
-        value: "https://uni-project-drab.vercel.app"
-      # Vercel deployment URLs include a changing suffix. This still permits
-      # only deployments from this project/team, rather than arbitrary sites.
-      - key: ALLOWED_ORIGIN_REGEX
-        value: '^https://uni-project-[a-z0-9-]+-metalpadawans-projects\.vercel\.app$'
-      - key: PUBLIC_FRONTEND_URL
-        value: "https://uni-project-drab.vercel.app"
+        # Set this to the single, stable Vercel production origin. Keeping an
+        # explicit list is safer than allowing changing preview URLs broadly.
+        sync: false
       - key: DEMO_MODE
         value: "false"
       - key: TIMEZONE

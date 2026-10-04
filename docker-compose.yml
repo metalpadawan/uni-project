@@ -25,7 +25,6 @@ services:
       JWT_SECRET: ${JWT_SECRET:-development-jwt-secret-change-before-deploy}
       DEMO_MODE: ${DEMO_MODE:-false}
       FACE_SERVICE_URL: http://face-service:8001
-      PUBLIC_FRONTEND_URL: ${PUBLIC_FRONTEND_URL:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173,http://127.0.0.1:5173}
     ports: ["8000:8000"]
     # `db` must be accepting connections, not just started, before the api container's

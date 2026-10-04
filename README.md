@@ -6,7 +6,7 @@ Multi-authentication attendance platform for the University of Cross River State
 
 - `frontend` (React/Vite), `api` (FastAPI), `face-service` (FastAPI + OpenCV), `database` (PostgreSQL/pgvector schema + migrations).
 - Auth: Argon2 password hashing, signed access/refresh JWTs with refresh-token rotation and revocation, role-based access (admin/lecturer/student), rate-limited login.
-- Attendance: signed 30-second rotating QR tokens, atomic check-in that only marks a student present when both the QR and a server-side face match pass, failed attempts audited separately for lecturer review.
+- Attendance: signed 15-second rotating QR tokens, atomic check-in that only marks a student present when both the QR and a server-side face match pass, failed attempts audited separately for lecturer review.
 - Face verification: `face-service` does its own detection and recognition (OpenCV's YuNet detector + SFace recognizer) from captured camera frames — the browser never computes or asserts anything about a match itself, it only captures frames.
 - Scheduling: recurring weekly class slots that auto-open and auto-close attendance sessions.
 - Accounts: admin-created lecturer/admin accounts, admin-driven student enrolment, and student self-registration with an admin approval queue.
@@ -30,7 +30,7 @@ uv pip install -r requirements.txt --python .venv
 # frontend
 cd frontend
 npm install
-npm run dev -- --port 3000
+npm run dev
 ```
 
 `http://127.0.0.1:8000/docs` has the interactive API. The api defaults to a zero-config SQLite file (`api/smart_attendance.db`) when `DATABASE_URL` isn't set — fine for local development, not for anything real (see below).

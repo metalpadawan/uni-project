@@ -25,7 +25,7 @@ Prevent proxy/buddy attendance ("checking in" a friend who isn't physically pres
 
 ## Operating Context
 
-- A lecturer either manually starts a session or one auto-opens on a pre-set weekly schedule; either way, the lecturer's own screen displays the rotating QR (refreshes every ~30s) for the room to see.
+- A lecturer either manually starts a session or one auto-opens on a pre-set weekly schedule; either way, the lecturer's own screen displays the rotating QR (refreshes every 15 seconds) for the room to see.
 - A student opens their own check-in flow, captures live camera frames (no client-side ML — frames go to the server, which does all detection/matching), then scans or pastes the QR token.
 - Face verification and QR validation both happen server-side; the browser never asserts or computes a match/liveness result itself.
 - A rejected/mismatched attempt is logged for lecturer review rather than silently failing — the student can retry immediately.
@@ -37,7 +37,6 @@ Prevent proxy/buddy attendance ("checking in" a friend who isn't physically pres
 - Account creation always has a gate: admin-direct enrolment, or student self-registration held in an explicit pending-approval queue — never silent/automatic.
 - Refresh tokens rotate and can be revoked; login and demo-login are rate-limited.
 - Real deployment requires HTTPS (`getUserMedia`/camera access is blocked by browsers off `https://`/`localhost`) and `DEMO_MODE=false`.
-- **Known gap, not yet built:** no course-enrolment management UI/API (who's enrolled in which course) — today that only happens via a demo-mode auto-enrolment shortcut or direct database access.
 - **Explicitly out of scope:** fee/payment verification — no such system exists in this project.
 - A non-camera fallback exists for QR entry (manual token paste) when automatic scanning isn't supported by the browser — worth preserving in any redesign, it's the accessibility/compatibility escape hatch for the check-in flow.
 

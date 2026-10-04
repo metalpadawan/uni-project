@@ -151,8 +151,8 @@ The repo root already has [vercel.json](vercel.json) telling Vercel to install a
 The repo root has [render.yaml](render.yaml), a Render **Blueprint** that defines all three backend pieces in one file: a managed Postgres database (`smartattend-db`), the `api` service, and the `face-service` service, each built from its own `Dockerfile` (`api/Dockerfile`, `face-service/Dockerfile`).
 
 1. In the Render dashboard: **New +** → **Blueprint** → connect this GitHub repo. Render reads `render.yaml` and proposes all three resources — confirm and deploy.
-2. Wait for `smartattend-face-service` and `smartattend-api` to both show "Live." `smartattend-api` depends on `smartattend-face-service`'s public URL (set in `render.yaml` as `FACE_SERVICE_URL`) — if you rename the face-service in the Render dashboard, its public URL changes too, so update `FACE_SERVICE_URL` in `render.yaml` (or directly in the Render dashboard's environment tab for `smartattend-api`) to match.
-3. `render.yaml` sets `ALLOWED_ORIGINS` to `https://uni-project-drab.vercel.app` — if your Vercel URL is different, update that value (in `render.yaml` or the Render dashboard) to your actual deployed frontend origin, exactly (protocol + host, no trailing slash), or every request from the frontend will fail CORS.
+2. Wait for `smartattend-face-service` and `smartattend-api` to both show "Live." In the API service's environment tab, set `FACE_SERVICE_URL` to the actual public URL of the face service. Render adds a suffix to service names, so do not guess this address.
+3. In the API service's environment tab, set `ALLOWED_ORIGINS` to your stable Vercel production origin exactly (protocol + host, no trailing slash). Do not use a broad preview-URL wildcard: it unnecessarily lets changing preview deployments call the API.
 4. **Database preparation is automatic.** On startup, the API enables `pgvector` and then creates any missing tables, including the `vector(128)` face-embedding column. You do not need to run the numbered SQL files or connect with `psql` for a fresh Render deployment. If Render reports a database permission error while enabling `vector`, share that deploy log with Render support.
 
 ### 3. Connect the frontend to the backend
@@ -163,7 +163,7 @@ VITE_API_URL = https://smartattend-api.onrender.com
 (use `smartattend-api`'s actual Render URL — check the Render dashboard if you renamed the service). Redeploy the frontend (Vercel → Deployments → Redeploy) so the new env var is baked into the build — Vite inlines `VITE_*` variables at build time, so just setting the variable without a redeploy has no effect.
 
 ### Two things worth knowing about this path
-- **Render's free tier spins services down after inactivity** and takes tens of seconds to wake back up on the next request. `QR_TTL_SECONDS` defaults to 30 — a cold-started `api` can plausibly take longer than that to respond to the very first request after idle, which would show up as an expired/failed QR check-in on that first attempt. If you're demoing live, hit the site once a minute or two before you actually need it to "wake" the services first; a paid Render plan removes this entirely.
+- **Render's free tier spins services down after inactivity** and takes tens of seconds to wake up after inactivity. `QR_TTL_SECONDS` defaults to 15, so warm the site shortly before a live demo; a paid Render plan removes cold starts entirely.
 - `render.yaml` sets `DEMO_MODE=false`. Create the first administrator through `/auth/bootstrap`, then use that account to create the remaining accounts. Only enable demo mode temporarily in an isolated demonstration environment.
 
 ---
@@ -176,7 +176,7 @@ All of these are read by `api` (from `api/.env`, or the container environment in
 |---|---|---|
 | `DATABASE_URL` | Postgres connection string | `postgresql+psycopg://user:pass@host:5432/dbname`. Omit/adjust for a SQLite dev fallback if the codebase supports it in your version. |
 | `QR_SIGNING_SECRET` | HMAC key signing the rotating check-in QR tokens | Must be changed from the placeholder before any real deployment — the app enforces this. |
-| `QR_TTL_SECONDS` | How long each QR token stays valid | Default `30`. Shorter = harder to screenshot-and-share, less forgiving of slow scanning. |
+| `QR_TTL_SECONDS` | How long each QR token stays valid | Default `15`. Shorter = harder to screenshot-and-share, less forgiving of slow scanning. |
 | `FACE_DISTANCE_THRESHOLD` | Max embedding distance counted as a face match | Default `1.128`, SFace's own documented NORM_L2 threshold — don't change without understanding the recognition model's calibration. |
 | `FACE_SERVICE_URL` | Where `api` reaches `face-service` | `http://face-service:8001` in Docker, `http://127.0.0.1:8001` natively. |
 | `ALLOWED_ORIGINS` | CORS allow-list | Must exactly match the origin the frontend is actually served from, protocol and host included. |

@@ -81,7 +81,7 @@ Depending on your institution's data protection obligations (in Nigeria, the Nig
 
 - Passwords are hashed with Argon2, never stored or logged in plain text.
 - Sign-in tokens are short-lived (15-minute access tokens) with longer-lived refresh tokens that rotate on use and can be individually revoked (e.g., on logout, or if a device is lost).
-- The QR code used for classroom check-in is cryptographically signed and expires every 30 seconds, so a photographed or shared code stops working almost immediately.
+- The QR code used for classroom check-in is cryptographically signed and expires every 15 seconds, so a photographed or shared code stops working almost immediately.
 - Face verification runs entirely on the server; a device's camera feed is never trusted at face value; a stolen embedding array cannot be replayed by a script the way it could in an earlier version of this system.
 - Production deployments are required to use real, random secret keys and HTTPS — the system refuses to start with placeholder development secrets outside of an explicit local-development mode.
 
