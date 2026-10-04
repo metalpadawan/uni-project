@@ -1170,6 +1170,12 @@ footer {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  /* Rear cameras must retain their native orientation for QR scanning. */
+  transform: none;
+}
+
+.camera-frame.face-camera video {
+  /* A mirrored front-camera preview feels natural during face capture. */
   transform: scaleX(-1);
 }
 

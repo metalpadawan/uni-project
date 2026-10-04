@@ -105,7 +105,7 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
           ? `Scan ${course?.course_code || "class"} QR code`
           : "Verify your live face"}
       </h2>
-      <div className="camera-frame">
+      <div className={`camera-frame ${stage === "qr" ? "qr-camera" : "face-camera"}`}>
         <video
           ref={stage === "qr" ? qrVideo : faceVideo}
           autoPlay
