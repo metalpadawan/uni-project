@@ -67,6 +67,11 @@ async function request(path, options = {}) {
 export const api = {
   health: () => request("/health"),
   notifications: () => request("/notifications"),
+  verifyQr: (sessionId, qrToken) =>
+    request("/attendance/qr-verify", {
+      method: "POST",
+      body: JSON.stringify({ session_id: sessionId, qr_token: qrToken }),
+    }),
   createSession: (data = {}) =>
     request("/sessions", {
       method: "POST",

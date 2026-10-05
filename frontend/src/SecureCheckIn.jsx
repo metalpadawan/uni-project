@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { BrowserQRCodeReader } from "@zxing/browser";
 import { Camera, Check, QrCode } from "lucide-react";
 import { useFaceCapture } from "./useFaceCapture";
+import { api } from "./api";
 
 function tokenFromQr(value) {
   try {
@@ -18,13 +19,17 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
     useFaceCapture(stage === "face", { frames: 2, gapMs: 1000 });
   const qrVideo = useRef(null);
   const scannerControls = useRef(null);
+  const scanHandled = useRef(false);
   const [qrMessage, setQrMessage] = useState("");
   const [token, setToken] = useState("");
+  const [qrReceipt, setQrReceipt] = useState("");
 
   useEffect(() => () => scannerControls.current?.stop(), []);
 
   async function startQr() {
     setToken("");
+    setQrReceipt("");
+    scanHandled.current = false;
     setQrMessage("Point the rear camera at the lecturer's rotating QR code.");
     scannerControls.current?.stop();
     scannerControls.current = null;
@@ -34,12 +39,22 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
       scannerControls.current = await reader.decodeFromConstraints(
         { video: { facingMode: { ideal: "environment" } }, audio: false },
         qrVideo.current,
-        (result) => {
-          if (!result) return;
-          setToken(tokenFromQr(result.getText()));
-          setQrMessage("QR code captured. Continue to live face capture.");
+        async (result) => {
+          if (!result || scanHandled.current) return;
+          scanHandled.current = true;
           scannerControls.current?.stop();
           scannerControls.current = null;
+          const scannedToken = tokenFromQr(result.getText());
+          setQrMessage("QR captured. Confirming the live session...");
+          try {
+            const verified = await api.verifyQr(course.session_id, scannedToken);
+            setToken(scannedToken);
+            setQrReceipt(verified.receipt);
+            setQrMessage("QR confirmed. Complete face capture within two minutes.");
+          } catch (scanError) {
+            setQrMessage(scanError.message);
+            scanHandled.current = false;
+          }
         },
       );
     } catch {
@@ -78,10 +93,10 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
       {stage === "qr" ? (
         <>
           {!token && <button className="outline full" onClick={startQr}>Restart scanner</button>}
-          <button className="primary full" disabled={!token} onClick={beginFace}>Continue to face capture <Camera size={17} /></button>
+          <button className="primary full" disabled={!qrReceipt} onClick={beginFace}>Continue to face capture <Camera size={17} /></button>
         </>
       ) : facesReady ? (
-        <button className="primary full" disabled={busy} onClick={() => onComplete({ frameA: captured[0], frameB: captured[1], token })}>
+        <button className="primary full" disabled={busy} onClick={() => onComplete({ frameA: captured[0], frameB: captured[1], token, qrReceipt })}>
           {busy ? "Verifying attendance..." : "Verify face and mark present"} <Check size={17} />
         </button>
       ) : (

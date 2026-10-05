@@ -36,3 +36,26 @@ def signature_is_valid(token: str) -> bool:
         return hmac.compare_digest(expected, supplied) and int(expires) >= int(utcnow().timestamp())
     except (ValueError, TypeError):
         return False
+
+
+def new_qr_receipt(session_id: str, student_id: str, expires_at: datetime) -> str:
+    """Create a short-lived proof that a signed-in student scanned a live QR."""
+    nonce = secrets.token_urlsafe(18)
+    payload = f"{session_id}:{student_id}:{int(expires_at.timestamp())}:{nonce}"
+    signature = hmac.new(QR_SIGNING_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{payload}.{signature}"
+
+
+def qr_receipt_is_valid(receipt: str, session_id: str, student_id: str) -> bool:
+    try:
+        payload, supplied = receipt.rsplit(".", 1)
+        receipt_session, receipt_student, expires, _nonce = payload.split(":", 3)
+        expected = hmac.new(QR_SIGNING_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        return (
+            hmac.compare_digest(expected, supplied)
+            and receipt_session == session_id
+            and receipt_student == student_id
+            and int(expires) >= int(utcnow().timestamp())
+        )
+    except (ValueError, TypeError):
+        return False

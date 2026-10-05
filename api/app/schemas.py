@@ -64,8 +64,19 @@ class QRTokenOut(BaseModel):
 class CheckIn(BaseModel):
     session_id: str
     qr_token: str
+    qr_receipt: str | None = None
     frame_a: str
     frame_b: str
+
+
+class QRVerify(BaseModel):
+    session_id: str
+    qr_token: str
+
+
+class QRVerifyOut(BaseModel):
+    receipt: str
+    expires_at: datetime
 
 
 class StudentEnroll(BaseModel):

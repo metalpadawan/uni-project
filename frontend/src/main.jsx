@@ -430,7 +430,7 @@ function App() {
       setBusy(false);
     }
   }
-  async function finish({ frameA, frameB, token }) {
+  async function finish({ frameA, frameB, token, qrReceipt }) {
     if (!session) {
       setError("Choose an open attendance session first.");
       return;
@@ -441,6 +441,7 @@ function App() {
       await api.checkIn({
         session_id: session.session_id,
         qr_token: token,
+        qr_receipt: qrReceipt,
         frame_a: frameA,
         frame_b: frameB,
       });

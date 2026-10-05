@@ -19,9 +19,9 @@ from .config import settings
 from .database import Base, engine, get_db
 from .auth import hash_password, redeem_refresh_token, require_roles, revoke_refresh_token, token_pair, verify_password
 from .models import AttendanceAttempt, AttendanceRecord, AttendanceSession, AttendanceStatus, ClassSchedule, Course, CourseEnrollment, FaceEmbedding, PendingStudent, QRToken, RegistrationStatus, SessionStatus, Student, User, UserRole, uid
-from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseEnrollmentCreate, CourseEnrollmentOut, CourseOut, LoginRequest, NotificationOut, PendingStudentOut, QRTokenOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
+from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseEnrollmentCreate, CourseEnrollmentOut, CourseOut, LoginRequest, NotificationOut, PendingStudentOut, QRTokenOut, QRVerify, QRVerifyOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
 from .scheduling import sync_scheduled_sessions
-from .security import as_aware, new_qr_token, signature_is_valid, token_hash, utcnow
+from .security import as_aware, new_qr_receipt, new_qr_token, qr_receipt_is_valid, signature_is_valid, token_hash, utcnow
 
 Base.metadata.create_all(bind=engine)
 app = FastAPI(title="SmartAttend API", version="0.1.0")
@@ -698,6 +698,28 @@ def attendance_capture(*, frame: str, student: Student, student_name: str, marke
     return f"{relative_dir}/{filename}", image
 
 
+@app.post("/attendance/qr-verify", response_model=QRVerifyOut)
+@limiter.limit("10/minute")
+def verify_qr(request: Request, payload: QRVerify, db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.student))):
+    """Verify a QR immediately and preserve that result for the face step."""
+    sync_scheduled_sessions(db)
+    now = utcnow()
+    session = db.get(AttendanceSession, payload.session_id)
+    student = db.scalar(select(Student).where(Student.user_id == user.id))
+    qr = db.scalar(select(QRToken).where(QRToken.token_hash == token_hash(payload.qr_token), QRToken.session_id == payload.session_id))
+    if not session or session.status != SessionStatus.open or as_aware(session.started_at) > now or as_aware(session.ends_at) <= now:
+        raise HTTPException(409, "Attendance session is not open.")
+    if not student:
+        raise HTTPException(404, "Student profile was not found.")
+    if not qr or not signature_is_valid(payload.qr_token) or as_aware(qr.expires_at) < now:
+        raise HTTPException(422, "QR expired or invalid. Ask the lecturer to refresh it.")
+    expires_at = min(now + timedelta(minutes=2), as_aware(session.ends_at))
+    return QRVerifyOut(
+        receipt=new_qr_receipt(session.id, student.id, expires_at),
+        expires_at=expires_at,
+    )
+
+
 @app.post("/attendance/checkin", response_model=CheckInOut, status_code=status.HTTP_201_CREATED)
 @limiter.limit("5/minute")
 def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.student))):
@@ -710,7 +732,14 @@ def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), 
         raise HTTPException(409, "Attendance session is not open.")
     if not student:
         raise HTTPException(404, "Student profile was not found.")
-    qr_valid = bool(qr and signature_is_valid(payload.qr_token) and as_aware(qr.expires_at) >= now)
+    qr_valid = bool(
+        qr
+        and (
+            qr_receipt_is_valid(payload.qr_receipt, session.id, student.id)
+            if payload.qr_receipt
+            else signature_is_valid(payload.qr_token) and as_aware(qr.expires_at) >= now
+        )
+    )
     if not qr_valid:
         raise HTTPException(422, "QR expired or invalid. Ask the lecturer to refresh it.")
     face_template = db.scalar(select(FaceEmbedding).where(FaceEmbedding.student_id == student.id))
