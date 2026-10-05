@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   ScanFace,
@@ -251,6 +251,7 @@ function App() {
   const [openSessions, setOpenSessions] = useState([]);
   const [sessionsBusy, setSessionsBusy] = useState(false);
   const [sessionsError, setSessionsError] = useState("");
+  const [lecturerDashboard, setLecturerDashboard] = useState(null);
   const [notifications, setNotifications] = useState([]);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [records, setRecords] = useState(
@@ -305,16 +306,29 @@ function App() {
     };
   }, [user, role, page]);
   useEffect(() => {
-    if (!user || role !== "Lecturer" || page !== "Dashboard" || modal) return;
+    if (!user || role !== "Lecturer" || page !== "Dashboard") return;
     let active = true;
-    api
-      .currentSession()
-      .then((current) => {
-        if (active && current) setSession(current);
-      })
-      .catch(() => {});
+    const loadDashboard = () => api.lecturerDashboard().then((data) => {
+      if (!active) return;
+      setLecturerDashboard(data);
+      setSession(data.live_session);
+      if (data.live_session) {
+        setRecords(
+          data.live_session.records.map((row) => ({
+            ...row,
+            course: data.live_session.course_code,
+            time: new Date(row.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            status: row.status === "present" ? "Present" : "Flagged",
+            initials: row.name.split(" ").map((part) => part[0]).join("").slice(0, 2),
+          })),
+        );
+      } else setRecords([]);
+    }).catch(() => {});
+    loadDashboard();
+    const refreshTimer = window.setInterval(loadDashboard, 10_000);
     return () => {
       active = false;
+      window.clearInterval(refreshTimer);
     };
   }, [user, role, page]);
   useEffect(() => {
@@ -362,13 +376,10 @@ function App() {
       clearInterval(attendanceTimer);
     };
   }, [modal, session?.session_id]);
-  const stats = useMemo(
-    () => ({
-      present: records.filter((r) => r.status === "Present").length,
-      total: 48,
-    }),
-    [records],
-  );
+  const liveSession = lecturerDashboard?.live_session;
+  const livePresent = liveSession?.present_students || 0;
+  const liveTotal = liveSession?.enrolled_students || 0;
+  const livePercent = liveTotal ? Math.round((livePresent / liveTotal) * 100) : 0;
   const nav =
     role === "Lecturer"
       ? [
@@ -636,7 +647,7 @@ function App() {
           <>
             <section className="welcome">
               <div>
-                <h2>Good afternoon, Dr. Umoh.</h2>
+                <h2>Good afternoon, {user.name}.</h2>
                 <p>Here’s what’s happening with your classes today.</p>
               </div>
               <button
@@ -663,30 +674,30 @@ function App() {
               <Stat
                 icon={<CalendarDays />}
                 label="Today's sessions"
-                value="3"
-                note="2 completed"
+                value={String(lecturerDashboard?.todays_sessions || 0)}
+                note={`${lecturerDashboard?.completed_sessions || 0} completed`}
                 tone="purple"
               />
               <Stat
                 icon={<Users />}
                 label="Students present"
-                value="86"
-                suffix="/ 112"
-                note="76.8% attendance"
+                value={String(livePresent)}
+                suffix={liveSession ? `/ ${liveTotal}` : ""}
+                note={liveSession ? `${livePercent}% attendance` : "No live session"}
                 tone="green"
               />
               <Stat
                 icon={<ScanFace />}
                 label="Face verified"
-                value="84"
-                note="97.7% success rate"
+                value={String(liveSession?.face_verified || 0)}
+                note={liveSession ? "Verified check-ins" : "No live session"}
                 tone="blue"
               />
               <Stat
                 icon={<QrCode />}
                 label="QR verified"
-                value="86"
-                note="100% success rate"
+                value={String(liveSession?.qr_verified || 0)}
+                note={liveSession ? "Verified check-ins" : "No live session"}
                 tone="orange"
               />
             </section>
@@ -695,27 +706,27 @@ function App() {
                 <div className="panel-head">
                   <div>
                     <h3>Live attendance</h3>
-                    <p>CSC 421 · Artificial Intelligence</p>
+                    <p>{liveSession ? `${liveSession.course_code} · ${liveSession.course_title}` : "No attendance session is open"}</p>
                   </div>
                   <span className="live">
                     <i />
-                    LIVE
+                    {liveSession ? "LIVE" : "WAITING"}
                   </span>
                 </div>
                 <div className="session-progress">
                   <div>
                     <b>
-                      {stats.present} of {stats.total} students
+                      {livePresent} of {liveTotal} students
                     </b>
-                    <span>Session closes at 10:30 AM</span>
+                    <span>{liveSession ? `Session closes at ${new Date(liveSession.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Plan or start a session to begin."}</span>
                   </div>
                   <strong>
-                    {Math.round((stats.present / stats.total) * 100)}%
+                    {livePercent}%
                   </strong>
                 </div>
                 <div className="bar">
                   <i
-                    style={{ width: `${(stats.present / stats.total) * 100}%` }}
+                    style={{ width: `${livePercent}%` }}
                   />
                 </div>
                 <div className="table-wrap">
@@ -751,6 +762,9 @@ function App() {
                           </td>
                         </tr>
                       ))}
+                      {!records.length && (
+                        <tr><td colSpan="4">No verified attendance records yet.</td></tr>
+                      )}
                     </tbody>
                   </table>
                 </div>
@@ -767,15 +781,16 @@ function App() {
                     </div>
                     <button aria-label="Session options">•••</button>
                   </div>
-                  <span className="time-badge">11:00 AM</span>
-                  <h4>CSC 323</h4>
-                  <b>Computer Architecture</b>
-                  <p>
-                    <Clock3 size={15} /> 11:00 AM – 1:00 PM
-                  </p>
-                  <p>
-                    <Users size={15} /> 64 enrolled students
-                  </p>
+                  {lecturerDashboard?.next_session ? (
+                    <>
+                      <span className="time-badge">{new Date(lecturerDashboard.next_session.starts_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                      <h4>{lecturerDashboard.next_session.course_code}</h4>
+                      <b>{lecturerDashboard.next_session.course_title}</b>
+                      <p><Clock3 size={15} /> {new Date(lecturerDashboard.next_session.starts_at).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })} – {new Date(lecturerDashboard.next_session.ends_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</p>
+                    </>
+                  ) : (
+                    <p>No upcoming class is scheduled.</p>
+                  )}
                   <button className="outline" onClick={startSession}>
                     <Play size={16} /> Prepare session
                   </button>

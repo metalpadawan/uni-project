@@ -19,7 +19,7 @@ from .config import settings
 from .database import Base, engine, get_db
 from .auth import hash_password, redeem_refresh_token, require_roles, revoke_refresh_token, token_pair, verify_password
 from .models import AttendanceAttempt, AttendanceRecord, AttendanceSession, AttendanceStatus, ClassSchedule, Course, CourseEnrollment, FaceEmbedding, PendingStudent, QRToken, RegistrationStatus, SessionStatus, Student, User, UserRole, uid
-from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseEnrollmentCreate, CourseEnrollmentOut, CourseOut, LoginRequest, NotificationOut, PendingStudentOut, QRTokenOut, QRVerify, QRVerifyOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
+from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseEnrollmentCreate, CourseEnrollmentOut, CourseOut, LecturerAttendanceRowOut, LecturerDashboardOut, LecturerLiveSessionOut, LecturerNextSessionOut, LoginRequest, NotificationOut, PendingStudentOut, QRTokenOut, QRVerify, QRVerifyOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
 from .scheduling import sync_scheduled_sessions
 from .security import as_aware, new_qr_receipt, new_qr_token, qr_receipt_is_valid, signature_is_valid, token_hash, utcnow
 
@@ -515,6 +515,120 @@ def current_session(db: Session = Depends(get_db), lecturer: User = Depends(requ
         return None
     session, course = row
     return SessionOut(session_id=session.id, course_code=course.code, status=session.status.value, starts_at=session.started_at, ends_at=session.ends_at)
+
+
+def _next_schedule_occurrence(schedule: ClassSchedule, now):
+    local_now = now.astimezone(ZoneInfo(settings.timezone))
+    days_until = (schedule.day_of_week - local_now.weekday()) % 7
+    starts_at = (local_now + timedelta(days=days_until)).replace(
+        hour=schedule.start_time.hour,
+        minute=schedule.start_time.minute,
+        second=0,
+        microsecond=0,
+    )
+    if starts_at <= local_now:
+        starts_at += timedelta(days=7)
+    starts_at = starts_at.astimezone(now.tzinfo)
+    return starts_at, starts_at + timedelta(minutes=schedule.duration_minutes)
+
+
+@app.get("/lecturer/dashboard", response_model=LecturerDashboardOut)
+def lecturer_dashboard(db: Session = Depends(get_db), lecturer: User = Depends(require_roles(UserRole.lecturer))):
+    """Live lecturer dashboard data sourced only from persisted sessions and records."""
+    sync_scheduled_sessions(db)
+    now = utcnow()
+    local_now = now.astimezone(ZoneInfo(settings.timezone))
+    day_start = local_now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(now.tzinfo)
+    day_end = day_start + timedelta(days=1)
+    today_sessions = db.scalar(
+        select(func.count(AttendanceSession.id)).where(
+            AttendanceSession.lecturer_id == lecturer.id,
+            AttendanceSession.started_at >= day_start,
+            AttendanceSession.started_at < day_end,
+        )
+    ) or 0
+    completed_sessions = db.scalar(
+        select(func.count(AttendanceSession.id)).where(
+            AttendanceSession.lecturer_id == lecturer.id,
+            AttendanceSession.started_at >= day_start,
+            AttendanceSession.started_at < day_end,
+            AttendanceSession.status == SessionStatus.closed,
+        )
+    ) or 0
+    current = db.execute(
+        select(AttendanceSession, Course)
+        .join(Course, AttendanceSession.course_id == Course.id)
+        .where(
+            AttendanceSession.lecturer_id == lecturer.id,
+            AttendanceSession.status == SessionStatus.open,
+            AttendanceSession.started_at <= now,
+            AttendanceSession.ends_at > now,
+        )
+        .order_by(AttendanceSession.started_at.desc())
+    ).first()
+    live_session = None
+    if current:
+        session, course = current
+        enrolled_students = db.scalar(select(func.count(CourseEnrollment.id)).where(CourseEnrollment.course_id == course.id)) or 0
+        records = db.execute(
+            select(AttendanceRecord, Student, User)
+            .join(Student, AttendanceRecord.student_id == Student.id)
+            .join(User, Student.user_id == User.id)
+            .where(AttendanceRecord.session_id == session.id)
+            .order_by(AttendanceRecord.marked_at.desc())
+        ).all()
+        rows = [
+            LecturerAttendanceRowOut(
+                id=student.matric_no,
+                name=account.name,
+                time=record.marked_at,
+                status=record.status.value,
+                face_match_score=record.face_match_score,
+            )
+            for record, student, account in records
+        ]
+        present_students = len(rows)
+        live_session = LecturerLiveSessionOut(
+            session_id=session.id,
+            course_code=course.code,
+            course_title=course.title,
+            starts_at=session.started_at,
+            ends_at=session.ends_at,
+            enrolled_students=enrolled_students,
+            present_students=present_students,
+            face_verified=present_students,
+            qr_verified=present_students,
+            records=rows,
+        )
+
+    candidates = []
+    future_sessions = db.execute(
+        select(AttendanceSession, Course)
+        .join(Course, AttendanceSession.course_id == Course.id)
+        .where(
+            AttendanceSession.lecturer_id == lecturer.id,
+            AttendanceSession.status == SessionStatus.open,
+            AttendanceSession.started_at > now,
+        )
+    ).all()
+    candidates.extend((as_aware(session.started_at), as_aware(session.ends_at), course) for session, course in future_sessions)
+    schedules = db.execute(
+        select(ClassSchedule, Course)
+        .join(Course, ClassSchedule.course_id == Course.id)
+        .where(Course.lecturer_id == lecturer.id)
+    ).all()
+    candidates.extend((*_next_schedule_occurrence(schedule, now), course) for schedule, course in schedules)
+    candidates.sort(key=lambda candidate: candidate[0])
+    next_session = None
+    if candidates:
+        starts_at, ends_at, course = candidates[0]
+        next_session = LecturerNextSessionOut(course_code=course.code, course_title=course.title, starts_at=starts_at, ends_at=ends_at)
+    return LecturerDashboardOut(
+        todays_sessions=today_sessions,
+        completed_sessions=completed_sessions,
+        live_session=live_session,
+        next_session=next_session,
+    )
 
 
 @app.post("/sessions", response_model=SessionOut, status_code=status.HTTP_201_CREATED)

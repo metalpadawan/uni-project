@@ -85,6 +85,7 @@ export const api = {
   plannedSessions: () => request("/sessions/planned"),
   openSessions: () => request("/sessions/open"),
   currentSession: () => request("/sessions/current"),
+  lecturerDashboard: () => request("/lecturer/dashboard"),
   rotateQr: (sessionId) =>
     request(`/sessions/${sessionId}/qr`, { method: "POST" }),
   closeSession: (sessionId) =>

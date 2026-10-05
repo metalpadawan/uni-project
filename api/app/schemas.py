@@ -177,3 +177,38 @@ class AdminOverviewOut(BaseModel):
     registered_students: int
     active_courses: int
     pending_registrations: int
+
+
+class LecturerAttendanceRowOut(BaseModel):
+    id: str
+    name: str
+    time: datetime
+    status: str
+    face_match_score: float
+
+
+class LecturerLiveSessionOut(BaseModel):
+    session_id: str
+    course_code: str
+    course_title: str
+    starts_at: datetime
+    ends_at: datetime
+    enrolled_students: int
+    present_students: int
+    face_verified: int
+    qr_verified: int
+    records: list[LecturerAttendanceRowOut]
+
+
+class LecturerNextSessionOut(BaseModel):
+    course_code: str
+    course_title: str
+    starts_at: datetime
+    ends_at: datetime
+
+
+class LecturerDashboardOut(BaseModel):
+    todays_sessions: int
+    completed_sessions: int
+    live_session: LecturerLiveSessionOut | None
+    next_session: LecturerNextSessionOut | None
