@@ -126,6 +126,16 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class ProfileOut(BaseModel):
+    id: str
+    name: str
+    email: str
+    role: str
+    matric_no: str | None = None
+    department: str | None = None
+    level: int | None = None
+
+
 class CheckInOut(BaseModel):
     attendance_id: str
     status: str

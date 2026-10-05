@@ -18,7 +18,7 @@ from .config import settings
 from .database import Base, engine, get_db
 from .auth import hash_password, redeem_refresh_token, require_roles, revoke_refresh_token, token_pair, verify_password
 from .models import AttendanceAttempt, AttendanceRecord, AttendanceSession, AttendanceStatus, ClassSchedule, Course, CourseEnrollment, FaceEmbedding, PendingStudent, QRToken, RegistrationStatus, SessionStatus, Student, User, UserRole, uid
-from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseEnrollmentCreate, CourseEnrollmentOut, CourseOut, LecturerAttendanceRowOut, LecturerDashboardOut, LecturerLiveSessionOut, LecturerNextSessionOut, LoginRequest, NotificationOut, PendingStudentOut, QRTokenOut, QRVerify, QRVerifyOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
+from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseEnrollmentCreate, CourseEnrollmentOut, CourseOut, LecturerAttendanceRowOut, LecturerDashboardOut, LecturerLiveSessionOut, LecturerNextSessionOut, LoginRequest, NotificationOut, PendingStudentOut, ProfileOut, QRTokenOut, QRVerify, QRVerifyOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
 from .scheduling import sync_scheduled_sessions
 from .security import as_aware, new_qr_receipt, new_qr_token, qr_receipt_is_valid, signature_is_valid, token_hash, utcnow
 
@@ -66,6 +66,20 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
 @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(payload: RefreshRequest, db: Session = Depends(get_db)):
     revoke_refresh_token(payload.refresh_token, db)
+
+
+@app.get("/auth/me", response_model=ProfileOut)
+def me(db: Session = Depends(get_db), user: User = Depends(require_roles(UserRole.student, UserRole.lecturer, UserRole.admin))):
+    student = db.scalar(select(Student).where(Student.user_id == user.id)) if user.role == UserRole.student else None
+    return ProfileOut(
+        id=user.id,
+        name=user.name,
+        email=user.email,
+        role=user.role.value,
+        matric_no=student.matric_no if student else None,
+        department=student.department if student else None,
+        level=student.level if student else None,
+    )
 
 
 @app.post("/auth/register", status_code=status.HTTP_201_CREATED)

@@ -71,8 +71,8 @@ function LoginScreen({ onLogin, demoMode }) {
         <div>
           <h1>Attendance that proves presence.</h1>
           <p>
-            Face recognition and a short-lived classroom QR code work together
-            to stop proxy attendance.
+            An attendance photo and a short-lived classroom QR code work together
+            to document classroom presence.
           </p>
           <div className="login-feature">
             <ScanFace />
@@ -269,6 +269,16 @@ function App() {
     // overlay covering a destination after navigation.
     setNotificationsOpen(false);
   }, [page]);
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    api.me().then((profile) => {
+      if (!active) return;
+      setUser(profile);
+      sessionStorage.setItem("smartattend_user", JSON.stringify(profile));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, [user?.id]);
   useEffect(() => {
     if (!user) return;
     let active = true;
@@ -646,6 +656,7 @@ function App() {
             sessions={openSessions}
             sessionsBusy={sessionsBusy}
             sessionsError={sessionsError}
+            user={user}
             onStart={beginStudentCheckIn}
           />
         ) : page === "Dashboard" ? (
@@ -768,7 +779,7 @@ function App() {
                         </tr>
                       ))}
                       {!records.length && (
-                        <tr><td colSpan="4">No verified attendance records yet.</td></tr>
+                        <tr><td colSpan="4">No attendance records yet.</td></tr>
                       )}
                     </tbody>
                   </table>
@@ -801,14 +812,14 @@ function App() {
                   </button>
                 </div>
                 <div className="panel method">
-                  <h3>Dual authentication</h3>
-                  <p>Every student is verified through two secure layers.</p>
+                  <h3>Attendance evidence</h3>
+                  <p>Each record is tied to a live QR and a captured attendance photo.</p>
                   <div>
                     <span>
                       <ScanFace />
                     </span>
                     <b>
-                      Face recognition<small>Identity confirmed</small>
+                      Attendance photo<small>Saved with the student record</small>
                     </b>
                     <Check />
                   </div>
@@ -834,6 +845,7 @@ function App() {
           <Workspace
             page={page}
             records={records}
+            course={liveSession}
             onStart={() => setModal("checkin")}
           />
         )}
@@ -974,7 +986,7 @@ function App() {
                       readOnly
                       value={
                         session
-                          ? "CSC 421 · QR ready"
+                          ? `${session.course_code} · QR ready`
                           : "No active lecturer session"
                       }
                     />
@@ -1027,6 +1039,7 @@ function PortalView({
   records,
   setPage,
   onStart,
+  user,
   sessions = [],
   sessionsBusy = false,
   sessionsError = "",
@@ -1061,12 +1074,13 @@ function PortalView({
           <StudentAttendanceHistory />
         ) : page === "Profile" ? (
           <div className="panel profile-card">
-            <div className="avatar large">JO</div>
-            <h3>Jecintha Odok</h3>
-            <p>21/CSC/156 · Computer Science</p>
+            <div className="avatar large">{user.name.split(" ").map((part) => part[0]).join("").slice(0, 2)}</div>
+            <h3>{user.name}</h3>
+            <p>{user.matric_no || "Matriculation number pending"} · {user.department || "Department pending"}{user.level ? ` · ${user.level} level` : ""}</p>
             <span className="status present">
-              <ShieldCheck size={14} /> Face enrolled
+              <ShieldCheck size={14} /> Attendance photo capture enabled
             </span>
+            <small className="profile-email">{user.email}</small>
           </div>
         ) : (
           <>
@@ -2042,7 +2056,7 @@ function LecturerRoster() {
     </section>
   );
 }
-function Workspace({ page, records, onStart }) {
+function Workspace({ page, records, course, onStart }) {
   const [notice, setNotice] = useState(""),
     [prefs, setPrefs] = useState({ face: true, qr: true, alerts: true });
   function exportCsv() {
@@ -2054,7 +2068,7 @@ function Workspace({ page, records, onStart }) {
     ].join("\n");
     const a = document.createElement("a");
     a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    a.download = "CSC-421-attendance.csv";
+    a.download = `${course?.course_code || "attendance"}-attendance.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
     setNotice("Attendance report downloaded.");
@@ -2065,11 +2079,11 @@ function Workspace({ page, records, onStart }) {
       <section className="workspace">
         <PageHead
           title="Attendance register"
-          text="CSC 421 · Artificial Intelligence · Today"
+          text={course ? `${course.course_code} · ${course.course_title} · Live attendance` : "No live attendance session is open."}
         >
           <button className="primary" onClick={onStart}>
             <ScanFace size={17} />
-            Verify student
+            Open student check-in
           </button>
         </PageHead>
         <div className="summary-row">
@@ -2083,7 +2097,7 @@ function Workspace({ page, records, onStart }) {
           </b>
           <b>
             {records.length}
-            <small>Enrolled</small>
+            <small>Recorded entries</small>
           </b>
         </div>
         <RecordTable records={records} />
@@ -2094,7 +2108,7 @@ function Workspace({ page, records, onStart }) {
       <section className="workspace">
         <PageHead
           title="Attendance reports"
-          text="Review and export verified attendance data."
+          text={course ? `Review and export data for ${course.course_code}.` : "Review and export recorded attendance data."}
         >
           <button className="primary" onClick={exportCsv}>
             <FileBarChart size={17} />
@@ -2113,8 +2127,8 @@ function Workspace({ page, records, onStart }) {
             value={`${Math.round((records.filter((r) => r.status === "Present").length / (records.filter((r) => r.status === "Present" || r.status === "Flagged").length || 1)) * 100)}%`}
             text={
               records.some((r) => r.status === "Flagged")
-                ? `${records.filter((r) => r.status === "Flagged").length} attempt(s) failed a face or QR check and were flagged for review.`
-                : "All recorded entries completed both face and QR verification."
+                ? `${records.filter((r) => r.status === "Flagged").length} check-in attempt(s) need review.`
+                : "All recorded entries include a confirmed QR and attendance photo."
             }
           />
         </div>
@@ -2128,7 +2142,7 @@ function Workspace({ page, records, onStart }) {
       />
       <div className="settings panel">
         {[
-          ["face", "Require face recognition"],
+          ["face", "Require attendance photo"],
           ["qr", "Require dynamic QR code"],
           ["alerts", "Attendance alerts"],
         ].map(([k, t]) => (
@@ -2137,7 +2151,7 @@ function Workspace({ page, records, onStart }) {
               <b>{t}</b>
               <small>
                 {k === "face"
-                  ? "Verify registered facial identity."
+                  ? "Save a live attendance photo with the check-in."
                   : k === "qr"
                     ? "Confirm classroom presence."
                     : "Show session notifications."}
@@ -2190,7 +2204,7 @@ function RecordTable({ records, action }) {
             <th>Student</th>
             <th>Matric number</th>
             <th>Time</th>
-            <th>Face + QR status</th>
+            <th>Attendance status</th>
             {action && <th />}
           </tr>
         </thead>

@@ -1615,6 +1615,14 @@ footer {
   font-size: 11px;
 }
 
+.profile-email {
+  display: block;
+  margin-top: 14px;
+  color: var(--faint);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
 .admin-stats {
   padding: 0;
   margin-top: 18px;
