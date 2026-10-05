@@ -83,7 +83,7 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
         <span className={stage === "face" ? "complete" : ""}><Camera /></span>
       </div>
       <small>STEP {stage === "qr" ? "1" : "2"} OF 2</small>
-      <h2 id="modal-title">{stage === "qr" ? `Scan ${course?.course_code || "class"} QR code` : "Verify your live face"}</h2>
+      <h2 id="modal-title">{stage === "qr" ? `Scan ${course?.course_code || "class"} QR code` : "Capture your attendance photo"}</h2>
       <div className={`camera-frame ${stage === "qr" ? "qr-camera" : "face-camera"}`}>
         <video ref={stage === "qr" ? qrVideo : faceVideo} autoPlay muted playsInline aria-label={stage === "qr" ? "Rear camera QR scanner" : "Front camera face preview"} />
         <div className={stage === "qr" ? "qr-guide" : "face-guide"} />
@@ -97,10 +97,10 @@ export default function SecureCheckIn({ course, busy, error, onComplete }) {
         </>
       ) : facesReady ? (
         <button className="primary full" disabled={busy} onClick={() => onComplete({ frameA: captured[0], frameB: captured[1], token, qrReceipt })}>
-          {busy ? "Verifying attendance..." : "Verify face and mark present"} <Check size={17} />
+          {busy ? "Saving attendance..." : "Save photo and mark present"} <Check size={17} />
         </button>
       ) : (
-        <button className="primary full" disabled={capturing} onClick={capture}>{capturing ? "Capturing..." : "Capture face"} <Camera size={17} /></button>
+        <button className="primary full" disabled={capturing} onClick={capture}>{capturing ? "Capturing..." : "Capture attendance photo"} <Camera size={17} /></button>
       )}
     </div>
   );

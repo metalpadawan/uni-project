@@ -688,9 +688,9 @@ function App() {
               />
               <Stat
                 icon={<ScanFace />}
-                label="Face verified"
+                label="Attendance photos"
                 value={String(liveSession?.face_verified || 0)}
-                note={liveSession ? "Verified check-ins" : "No live session"}
+                note={liveSession ? "Saved with check-ins" : "No live session"}
                 tone="blue"
               />
               <Stat
@@ -876,8 +876,8 @@ function App() {
                   {session?.course_code || "Class"} attendance is open
                 </h2>
                 <p>
-                  Project this rotating QR code. Students must also pass face
-                  verification.
+                  Project this rotating QR code. Students then capture an
+                  attendance photo linked to their account and timestamp.
                 </p>
                 {qr && (
                   <div className="ticket-frame">
@@ -1034,15 +1034,15 @@ function PortalView({
             <h2>{page === "Check in" ? "Mark attendance securely" : page}</h2>
             <p>
               {page === "Check in"
-                ? "Choose an open class, verify your face, then scan its rotating QR code."
-                : "Track your verified attendance and course eligibility."}
+                ? "Choose an open class, scan its rotating QR code, then capture your attendance photo."
+                : "Track your recorded attendance and course eligibility."}
             </p>
           </div>
           <div className="double-lock">
             <div>
               <ScanFace />
-              <b>1. Verify face</b>
-              <small>Live identity match</small>
+              <b>1. Capture photo</b>
+              <small>Saved with your attendance</small>
             </div>
             <span>+</span>
             <div>
@@ -1117,8 +1117,8 @@ function PortalView({
               <div>
                 <b>Your attendance needs both checks</b>
                 <p>
-                  A face match alone or QR scan alone can never mark you
-                  present.
+                  The live QR confirmation and your attendance photo are saved
+                  together before you are marked present.
                 </p>
               </div>
             </div>

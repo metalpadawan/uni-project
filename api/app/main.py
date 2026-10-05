@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-import httpx
 import qrcode
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -305,7 +304,7 @@ def notifications(db: Session = Depends(get_db), user: User = Depends(require_ro
                 id=f"attendance-{record.id}",
                 kind="attendance-recorded",
                 title=f"Attendance recorded for {course.code}",
-                detail="Face and QR verification were successful.",
+                detail="The QR was confirmed and an attendance photo was saved.",
                 occurred_at=record.marked_at,
                 session_id=record.session_id,
             ))
@@ -343,7 +342,7 @@ def notifications(db: Session = Depends(get_db), user: User = Depends(require_ro
                 id=f"attendance-{record.id}",
                 kind="attendance-recorded",
                 title=f"A student checked in to {course.code}",
-                detail="Face and QR verification were successful.",
+                detail="The QR was confirmed and an attendance photo was saved.",
                 occurred_at=record.marked_at,
                 session_id=record.session_id,
             ))
@@ -856,37 +855,6 @@ def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), 
     )
     if not qr_valid:
         raise HTTPException(422, "QR expired or invalid. Ask the lecturer to refresh it.")
-    face_template = db.scalar(select(FaceEmbedding).where(FaceEmbedding.student_id == student.id))
-    if not face_template:
-        raise HTTPException(422, "No enrolled face template was found for this student.")
-    try:
-        response = httpx.post(
-            f"{settings.face_service_url}/verify",
-            json={"enrolled_embedding": face_template.embedding, "frame_a": payload.frame_a, "frame_b": payload.frame_b},
-            timeout=settings.face_service_timeout_seconds,
-        )
-        face_result = response.json()
-    except (httpx.HTTPError, ValueError):
-        raise HTTPException(503, "Face verification service is unavailable. Please try again.")
-    face_valid = response.is_success and bool(face_result.get("matched"))
-    face_score = float(face_result.get("score", 0.0))
-    if not face_valid:
-        db.add(
-            AttendanceAttempt(
-                session_id=session.id,
-                student_id=student.id,
-                face_match_score=face_score,
-                qr_token_id=qr.id,
-                attempted_at=now,
-                status=AttendanceStatus.flagged,
-            )
-        )
-        db.commit()
-        raise HTTPException(
-            422,
-            "Face not recognized or liveness check failed. The attempt was flagged for lecturer review; you may try again.",
-        )
-
     if db.scalar(
         select(AttendanceRecord.id).where(
             AttendanceRecord.session_id == session.id,
@@ -899,7 +867,9 @@ def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), 
         id=uid(),
         session_id=session.id,
         student_id=student.id,
-        face_match_score=face_score,
+        # The live frame is stored as attendance evidence; it is not compared
+        # with a previously enrolled biometric template.
+        face_match_score=0.0,
         qr_token_id=qr.id,
         marked_at=now,
         status=AttendanceStatus.present,
@@ -912,7 +882,7 @@ def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), 
         attendance_id=record.id,
     )
     # The authenticated student's profile supplies the course membership. It
-    # is saved only after the QR and face checks have both passed, so a student
+    # is saved after QR confirmation and attendance-photo capture, so a student
     # never needs to type a matriculation number to access a live session.
     if not db.scalar(
         select(CourseEnrollment).where(
@@ -927,4 +897,4 @@ def check_in(request: Request, payload: CheckIn, db: Session = Depends(get_db), 
     except IntegrityError:
         db.rollback()
         raise HTTPException(409, "Attendance has already been recorded for this session.")
-    return CheckInOut(attendance_id=record.id, status=record.status.value, face_match_score=record.face_match_score, marked_at=record.marked_at, message="Face and QR verified. Attendance marked present.")
+    return CheckInOut(attendance_id=record.id, status=record.status.value, face_match_score=record.face_match_score, marked_at=record.marked_at, message="QR confirmed and attendance photo saved. Attendance marked present.")
