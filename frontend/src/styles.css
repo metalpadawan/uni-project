@@ -45,6 +45,7 @@ body {
   color: var(--ink);
   font-family: var(--font);
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 button,
@@ -70,6 +71,7 @@ button {
 
 .app {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ---------------- Sidebar ---------------- */
@@ -1949,6 +1951,38 @@ footer {
 
 /* ---------------- Responsive ---------------- */
 
+/* Tablets use the same roomy content layout as desktop, but navigation moves
+   off-canvas so an iPad portrait viewport never becomes a narrow sidebar app. */
+@media (max-width: 1024px) {
+  aside {
+    transform: translateX(-105%);
+    transition: transform 0.24s ease;
+    width: min(300px, 82vw);
+    padding-top: max(22px, env(safe-area-inset-top));
+    z-index: 60;
+  }
+  aside.open { transform: none; }
+  .aside-top .close { display: grid; }
+  .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    border: 0;
+    background: rgba(16, 17, 20, 0.42);
+    backdrop-filter: blur(2px);
+    z-index: 50;
+  }
+  main { margin-left: 0; }
+  .hamb,
+  .mobile-avatar { display: grid; }
+  header { padding-inline: 28px; }
+  .grid { padding-inline: 28px; }
+  .stats { padding-inline: 28px; }
+  .welcome { padding-inline: 28px; }
+  .workspace,
+  .portal-page { padding-inline: 28px; }
+}
+
 @media (max-width: 1100px) {
   .stats {
     grid-template-columns: repeat(2, 1fr);
@@ -1971,43 +2005,36 @@ footer {
   .admin-stats {
     grid-template-columns: 1fr 1fr;
   }
+  .student-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .student-form > button {
+    grid-column: span 2;
+  }
+  .records,
+  .table-wrap {
+    -webkit-overflow-scrolling: touch;
+  }
+  .records table,
+  .table-wrap table {
+    min-width: 620px;
+  }
 }
 
 @media (max-width: 760px) {
-  aside {
-    transform: translateX(-105%);
-    transition: transform 0.25s;
-    width: 275px;
-  }
-  aside.open {
-    transform: none;
-  }
-  .aside-top .close {
-    display: grid;
-  }
-  .scrim {
-    display: block;
-    position: fixed;
-    inset: 0;
-    border: 0;
-    background: rgba(16, 17, 20, 0.4);
-    z-index: 15;
-  }
-  main {
-    margin-left: 0;
-  }
   header {
     height: 70px;
     padding: 0 18px;
+    padding-top: env(safe-area-inset-top);
   }
   .hamb,
   .mobile-avatar {
     display: grid;
   }
-  .header-actions label,
-  .icon {
+  .header-actions label {
     display: none;
   }
+  .header-actions .icon { display: grid; }
   header > div:nth-child(2) {
     flex: 1;
     margin-left: 12px;
@@ -2045,7 +2072,12 @@ footer {
   }
   .modal {
     padding: 26px 20px;
+    width: 100%;
+    max-height: min(92dvh, 760px);
+    overflow-y: auto;
+    border-radius: 20px 20px 0 0;
   }
+  .modal-back { place-items: end center; padding: 0; }
   .table-wrap {
     max-width: 100%;
   }
@@ -2062,6 +2094,7 @@ footer {
   .student-form {
     grid-template-columns: 1fr;
   }
+  .student-form > button { grid-column: auto; }
   .report-grid {
     grid-template-columns: 1fr;
   }
@@ -2103,6 +2136,74 @@ footer {
   .login-panel {
     padding: 34px 20px;
   }
+  input,
+  select,
+  textarea { font-size: 16px; }
+}
+
+@media (max-width: 520px) {
+  header h1 { font-size: 18px; }
+  .header-actions { gap: 7px; }
+  .notification-dropdown {
+    position: fixed;
+    top: 78px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: calc(100dvh - 94px);
+  }
+  .welcome { flex-direction: column; }
+  .welcome .primary {
+    width: 100%;
+    font-size: 12px;
+    padding: 0 18px;
+  }
+  .stats { grid-template-columns: 1fr; }
+  .stat { min-height: 78px; }
+  .course-grid,
+  .admin-stats { grid-template-columns: 1fr; }
+  .portal-hero { padding: 20px; }
+  .double-lock { grid-template-columns: 1fr; }
+  .double-lock > span { display: none; }
+  .double-lock > div { min-height: 92px; }
+  .summary-row { grid-template-columns: 1fr; }
+  .summary-row b { min-height: 72px; }
+  .trust-note,
+  .admin-callout { align-items: flex-start; }
+  .camera-frame { aspect-ratio: 3 / 4; }
+}
+
+@media (hover: none) {
+  button,
+  .course-card button,
+  nav button { min-height: 44px; }
+  .remove { min-height: 36px; }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .panel,
+  .stat,
+  .course-card {
+    animation: surface-in 0.32s ease both;
+  }
+  .modal { animation: modal-in 0.22s ease both; }
+  .bar i { transition: width 0.35s ease; }
+  .notification-dropdown { animation: dropdown-in 0.16s ease both; }
+}
+
+@keyframes surface-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (prefers-reduced-motion: reduce) {
