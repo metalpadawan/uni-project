@@ -265,6 +265,11 @@ function App() {
     [records],
   );
   useEffect(() => {
+    // A notification belongs to the page that opened it; never leave the
+    // overlay covering a destination after navigation.
+    setNotificationsOpen(false);
+  }, [page]);
+  useEffect(() => {
     if (!user) return;
     let active = true;
     const loadNotifications = () =>
