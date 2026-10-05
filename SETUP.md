@@ -181,6 +181,7 @@ All of these are read by `api` (from `api/.env`, or the container environment in
 | `FACE_SERVICE_URL` | Where `api` reaches `face-service` | `http://face-service:8001` in Docker, `http://127.0.0.1:8001` natively. |
 | `ALLOWED_ORIGINS` | CORS allow-list | Must exactly match the origin the frontend is actually served from, protocol and host included. |
 | `JWT_SECRET` | Signs access/refresh tokens | Same "must change before real use" enforcement as `QR_SIGNING_SECRET`. |
+| `ADMIN_RECOVERY_KEY` | Temporarily enables `/auth/recover-admin` | Leave unset normally. Use a new 32+ character secret only when all admin access is lost, then remove it immediately after recovery. |
 | `DEMO_MODE` | Enables one-click demo logins on the login screen | Defaults to `false`; enable only for an isolated local demo. |
 | `TIMEZONE` | Used for scheduling/attendance-window calculations | Default `Africa/Lagos`. |
 

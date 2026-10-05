@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     access_token_minutes: int = 15
     refresh_token_days: int = 7
     demo_mode: bool = False
+    # Deliberately unset in normal operation. When configured temporarily, it
+    # enables the emergency administrator-recovery endpoint.
+    admin_recovery_key: str | None = None
     timezone: str = "Africa/Lagos"
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

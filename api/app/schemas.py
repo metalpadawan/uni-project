@@ -122,6 +122,11 @@ class RegisterRequest(LoginRequest):
     role: str
 
 
+class AdminRecoveryRequest(LoginRequest):
+    name: str = Field(min_length=2, max_length=160)
+    recovery_key: str = Field(min_length=24, max_length=256)
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 

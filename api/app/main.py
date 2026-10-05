@@ -1,4 +1,5 @@
 import base64
+import hmac
 import io
 from datetime import timedelta
 import re
@@ -18,7 +19,7 @@ from .config import settings
 from .database import Base, engine, get_db
 from .auth import hash_password, redeem_refresh_token, require_roles, revoke_refresh_token, token_pair, verify_password
 from .models import AttendanceAttempt, AttendanceRecord, AttendanceSession, AttendanceStatus, ClassSchedule, Course, CourseEnrollment, FaceEmbedding, PendingStudent, QRToken, RegistrationStatus, SessionStatus, Student, User, UserRole, uid
-from .schemas import AdminOverviewOut, AttendanceHistoryOut, CheckIn, CheckInOut, CourseEnrollmentCreate, CourseEnrollmentOut, CourseOut, LecturerAttendanceRowOut, LecturerDashboardOut, LecturerLiveSessionOut, LecturerNextSessionOut, LoginRequest, NotificationOut, PendingStudentOut, ProfileOut, QRTokenOut, QRVerify, QRVerifyOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
+from .schemas import AdminOverviewOut, AdminRecoveryRequest, AttendanceHistoryOut, CheckIn, CheckInOut, CourseEnrollmentCreate, CourseEnrollmentOut, CourseOut, LecturerAttendanceRowOut, LecturerDashboardOut, LecturerLiveSessionOut, LecturerNextSessionOut, LoginRequest, NotificationOut, PendingStudentOut, ProfileOut, QRTokenOut, QRVerify, QRVerifyOut, RefreshRequest, RegisterRequest, RejectRequest, RosterCourseOut, RosterStudentOut, ScheduleCreate, ScheduleOut, SessionCreate, SessionOut, StudentEnroll, StudentRegisterRequest, StudentRosterOut
 from .scheduling import sync_scheduled_sessions
 from .security import as_aware, new_qr_receipt, new_qr_token, qr_receipt_is_valid, signature_is_valid, token_hash, utcnow
 
@@ -46,6 +47,34 @@ def bootstrap_admin(payload: RegisterRequest, db: Session = Depends(get_db)):
         raise HTTPException(409, "Bootstrap is disabled after the first account is created.")
     user = User(name=payload.name, email=payload.email.lower(), password_hash=hash_password(payload.password), role=UserRole.admin, created_at=utcnow())
     db.add(user); db.commit()
+    return token_pair(user, db)
+
+
+@app.post("/auth/recover-admin")
+@limiter.limit("3/hour")
+def recover_admin(request: Request, payload: AdminRecoveryRequest, db: Session = Depends(get_db)):
+    """Emergency access recovery, available only while a Render secret is set."""
+    configured_key = settings.admin_recovery_key
+    if not configured_key or not hmac.compare_digest(payload.recovery_key, configured_key):
+        # Do not reveal whether recovery is enabled or which part failed.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
+
+    email = payload.email.lower()
+    user = db.scalar(select(User).where(User.email == email))
+    if user:
+        user.name = payload.name
+        user.password_hash = hash_password(payload.password)
+        user.role = UserRole.admin
+    else:
+        user = User(
+            name=payload.name,
+            email=email,
+            password_hash=hash_password(payload.password),
+            role=UserRole.admin,
+            created_at=utcnow(),
+        )
+        db.add(user)
+    db.commit()
     return token_pair(user, db)
 
 
